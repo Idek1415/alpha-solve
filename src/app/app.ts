@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnDestroy, computed, signal } from '@angular/core';
+import { Component, HostListener, OnDestroy, computed, signal } from '@angular/core';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { FormsModule } from '@angular/forms';
 import { LatexRendererComponent } from './components/latex-renderer/latex-renderer.component';
 import { MathQuillInputComponent } from './components/mathquill-input/mathquill-input.component';
@@ -36,6 +37,101 @@ export class App implements OnDestroy {
   private readonly autosaveKey = 'alpha-solve.workspace.autosave.v5';
 
   protected readonly workspace = signal(this.loadWorkspace());
+  protected readonly projects = signal<Workspace[]>(this.loadProjects());
+  protected readonly helpOpen = signal(false);
+  protected readonly helpSection = signal('Getting started');
+  protected readonly collapsed = signal<Set<string>>(new Set());
+  protected readonly savedPath = signal('');
+  protected readonly helpSections = ['Getting started', 'Projects and files', 'Equations and variables', 'Python functions', 'Arrange calculations', 'JSON and LLMs', 'About'];
+  private draggedCell: string | null = null;
+
+  private loadProjects(): Workspace[] {
+    try {
+      const data = localStorage.getItem('alpha-solve.projects.v1');
+      if (data) {
+        const projects = (JSON.parse(data) as string[]).map(value => Workspace.fromString(value));
+        if (projects.length) {
+          this.workspace.set(projects.find(p => p.id === this.workspace().id) || projects[0]);
+          return projects;
+        }
+      }
+    } catch { /* Recover the existing single-workspace autosave. */ }
+    return [this.workspace()];
+  }
+
+  protected activateProject(project: Workspace): void {
+    this.syncProjects();
+    this.collapsed.update(current => {
+      const next = new Set(current);
+      next.add(this.workspace().id);
+      next.delete(project.id);
+      return next;
+    });
+    this.workspace.set(project);
+    this.selectedCellId.set(null);
+    this.resetHistory();
+    this.touch(true);
+  }
+
+  private syncProjects(): void {
+    this.projects.update(projects => projects.map(p => p.id === this.workspace().id ? this.workspace() : p));
+  }
+
+  protected toggleCollapsed(id: string): void {
+    this.collapsed.update(current => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  protected showHelp(): void {
+    this.helpOpen.set(true);
+    setTimeout(() => document.querySelector<HTMLButtonElement>('.help-dialog button')?.focus());
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  protected helpKeyboard(event: KeyboardEvent): void {
+    if (!this.helpOpen()) return;
+    if (event.key === 'Escape') {
+      this.helpOpen.set(false);
+      document.querySelector<HTMLButtonElement>('.help-button')?.focus();
+      event.preventDefault();
+    }
+    if (event.key === 'Tab') {
+      const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.help-dialog button'));
+      const first = buttons[0], last = buttons[buttons.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    }
+  }
+
+  protected revealCell(cell: Cell): void {
+    this.selectCell(cell);
+    if (this.collapsed().has(cell.id)) this.toggleCollapsed(cell.id);
+    setTimeout(() => document.getElementById(`cell-${cell.id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+  }
+
+  protected startDrag(event: DragEvent, cell: Cell): void {
+    if (this.isRunning()) { event.preventDefault(); return; }
+    this.draggedCell = cell.id;
+    event.dataTransfer?.setData('text/plain', cell.id);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+  }
+
+  protected dropCell(event: DragEvent, target: Cell): void {
+    event.preventDefault();
+    const system = this.activeSystem();
+    const source = system?.cells.findIndex(c => c.id === this.draggedCell) ?? -1;
+    this.draggedCell = null;
+    if (!system || source < 0 || this.isRunning()) return;
+    const destination = system.cells.indexOf(target);
+    if (destination < 0 || source === destination) return;
+    const [cell] = system.cells.splice(source, 1);
+    system.cells.splice(destination, 0, cell);
+    this.markFromCellStale(system.cells[Math.min(source, destination)].id);
+    this.recordChange('Calculation order changed; run again to update results');
+  }
   protected readonly revision = signal(0);
   protected readonly activeSystem = computed(() => {
     this.revision();
@@ -250,28 +346,38 @@ export class App implements OnDestroy {
   }
 
   protected newWorkspace(): void {
-    this.workspace.set(this.createDemoWorkspace(false));
+    this.syncProjects();
+    this.collapsed.update(current => new Set([...current, this.workspace().id]));
+    const project = this.createDemoWorkspace(false);
+    project.name = `Project ${this.projects().length + 1}`;
+    this.projects.update(projects => [...projects, project]);
+    this.workspace.set(project);
     this.resetHistory();
-    this.touch(false);
+    this.touch(true);
     this.showMessage('New workspace created');
   }
 
   protected saveWorkspace(): void {
     this.downloadJson(`${this.safeFileName(this.workspace().name)}.asolve`, this.workspace().toString());
-    this.showMessage('Workspace saved');
   }
 
   protected openWorkspace(): void {
     this.chooseJsonFile(async text => {
       const raw = JSON.parse(text) as { format?: string };
       if (raw.format === WORKSPACE_FORMAT) {
-        this.workspace.set(Workspace.fromString(text));
+        const project = Workspace.fromString(text);
+        project.id = crypto.randomUUID();
+        this.syncProjects();
+        this.projects.update(projects => [...projects, project]);
+        this.workspace.set(project);
       } else {
         const system = Project.fromString(text);
+        this.syncProjects();
         this.workspace.set(new Workspace(system.name, [system], system.id));
+        this.projects.update(projects => [...projects, this.workspace()]);
       }
       this.resetHistory();
-      this.touch(false);
+      this.touch(true);
       this.showMessage('Workspace opened');
     });
   }
@@ -280,7 +386,6 @@ export class App implements OnDestroy {
     const system = this.activeSystem();
     if (!system) return;
     this.downloadJson(`${this.safeFileName(system.name)}.system.json`, system.toString());
-    this.showMessage('System JSON exported');
   }
 
   protected importSystem(): void {
@@ -507,12 +612,19 @@ export class App implements OnDestroy {
     if (!scheduleAutosave || typeof localStorage === 'undefined') return;
     if (this.autosaveTimer) clearTimeout(this.autosaveTimer);
     this.autosaveTimer = setTimeout(() => {
+      this.syncProjects();
       localStorage.setItem(this.autosaveKey, this.workspace().toString());
+      localStorage.setItem('alpha-solve.projects.v1', JSON.stringify(this.projects().map(p => p.toString())));
       this.autosaveTimer = null;
     }, 350);
   }
 
   private chooseJsonFile(onLoad: (text: string) => Promise<void>): void {
+    if (isTauri()) {
+      void invoke<string | null>('open_document').then(text => text === null ? undefined : onLoad(text))
+        .catch(error => this.errorMessage.set(String(error)));
+      return;
+    }
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json,.asolve,application/json';
@@ -531,6 +643,12 @@ export class App implements OnDestroy {
   }
 
   private downloadJson(fileName: string, json: string): void {
+    if (isTauri()) {
+      void invoke<string | null>('save_document', { name: fileName, contents: json }).then(path => {
+        if (path) { this.savedPath.set(path); this.showMessage(`Saved: ${path}`); }
+      }).catch(error => this.errorMessage.set(String(error)));
+      return;
+    }
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
@@ -538,6 +656,7 @@ export class App implements OnDestroy {
     anchor.download = fileName;
     anchor.click();
     URL.revokeObjectURL(url);
+    this.savedPath.set(`Browser download: ${fileName}. Check your browser's Downloads folder.`);
   }
 
   private safeFileName(value: string): string {
@@ -554,6 +673,9 @@ export class App implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.syncProjects();
+    localStorage.setItem(this.autosaveKey, this.workspace().toString());
+    localStorage.setItem('alpha-solve.projects.v1', JSON.stringify(this.projects().map(p => p.toString())));
     if (this.autosaveTimer) clearTimeout(this.autosaveTimer);
     if (this.messageTimer) clearTimeout(this.messageTimer);
   }

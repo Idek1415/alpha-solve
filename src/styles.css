@@ -8,6 +8,13 @@ body {
   background: #101317;
 }
 
+input, textarea, [contenteditable] { caret-color: #ffffff; }
+.mq-editable-field .mq-cursor { border-left: 2px solid #ffffff !important; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 2px solid #8ed3ff;
+  outline-offset: 2px;
+}
+
 body {
   font-family: "Segoe UI", Inter, system-ui, sans-serif;
 }

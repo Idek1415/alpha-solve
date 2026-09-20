@@ -216,10 +216,17 @@ export class MathQuillInputComponent implements AfterViewInit, OnDestroy, OnChan
   }
 
   // Public method to focus the MathQuill field
+  insertVariable(name: string): void {
+    if (!this.mathField || !/^[A-Za-z][A-Za-z0-9_]*$/.test(name)) return;
+    const [base, ...subscript] = name.split('_');
+    this.mathField.focus();
+    this.mathField.write(subscript.length ? `${base}_{${subscript.join('_')}}` : base);
+    this.mathField.keystroke('Right');
+  }
+
   focus(): void {
     if (this.mathField) {
       this.mathField.focus();
     }
   }
 }
-

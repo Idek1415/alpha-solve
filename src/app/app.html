@@ -1,19 +1,10 @@
 <div class="application-shell">
   <header class="titlebar">
     <div class="brand-mark">A</div>
-    <div class="app-title">Alpha Solve <span>Engineering Workspace</span></div>
-    <div class="runtime-state" [class.busy]="isLoading() || isRunning()">
-      <span class="state-dot"></span>{{ statusMessage() }}
-    </div>
+    <div class="app-title">Alpha Solve App <span>built on alpha solve by Jack Neeleman (icanthink42)</span></div>
+    <button class="help-button" (click)="showHelp()">Help</button>
   </header>
 
-  <nav class="menu-bar" aria-label="Application menu">
-    <button (click)="newWorkspace()">File</button>
-    <button (click)="undo()" [disabled]="!canUndo()">Edit</button>
-    <button>System</button>
-    <button>View</button>
-    <button>Help</button>
-  </nav>
 
   <div class="toolbar">
     <button class="tool-button" (click)="newWorkspace()" title="New workspace">
@@ -41,10 +32,14 @@
     <aside class="project-panel panel">
       <div class="panel-heading">
         <span>Project Explorer</span>
-        <button class="panel-action" (click)="addSystem()" title="Add system">＋</button>
       </div>
+      @for (project of projects(); track project.id) {
+        <div class="project-tab">
+          <button (click)="project.id === workspace().id ? toggleCollapsed(project.id) : activateProject(project)" [attr.aria-expanded]="project.id === workspace().id && !collapsed().has(project.id)" [attr.aria-label]="'Expand or collapse ' + project.name">{{ project.id !== workspace().id || collapsed().has(project.id) ? '›' : '⌄' }}</button>
+          <button (click)="activateProject(project)" [class.current-project]="project.id === workspace().id">{{ project.name }}</button>
+        </div>
+      }
       <div class="workspace-name-row">
-        <span class="disclosure">⌄</span>
         <span class="tree-icon">◫</span>
         <input
           class="workspace-name"
@@ -55,24 +50,25 @@
       </div>
 
       <div class="tree-scroll">
+        @if (!collapsed().has(workspace().id)) {
         @for (system of workspace().systems; track system.id) {
           <div class="system-tree" [class.active-system]="activeSystem()?.id === system.id">
             <button class="system-node" (click)="selectSystem(system.id)">
-              <span class="disclosure">⌄</span>
+              <span class="disclosure" (click)="toggleCollapsed(system.id); $event.stopPropagation()">{{ collapsed().has(system.id) ? '›' : '⌄' }}</span>
               <span class="tree-icon system-icon">∿</span>
               <span class="tree-label">{{ system.name }}</span>
               <span class="tree-count">{{ system.cells.length }}</span>
               <span class="tree-delete" (click)="deleteSystem(system, $event)">×</span>
             </button>
 
-            @if (activeSystem()?.id === system.id) {
+            @if (activeSystem()?.id === system.id && !collapsed().has(system.id)) {
               <div class="tree-group">
                 <div class="group-label"><span>⌄</span><span class="tree-icon">ƒ</span>Calculations</div>
                 @for (cell of system.cells; track cell.id; let i = $index) {
                   <button
                     class="cell-node"
                     [class.selected]="selectedCellId() === cell.id"
-                    (click)="selectCell(cell)"
+                    (click)="revealCell(cell)"
                   >
                     <span class="cell-type-icon" [attr.data-type]="cell.type">
                       {{ cell.type === 'equation' ? '∑' : cell.type === 'code' ? '⌘' : cell.type === 'note' ? '¶' : '▤' }}
@@ -89,6 +85,7 @@
               </div>
             }
           </div>
+        }
         }
       </div>
 
@@ -132,11 +129,16 @@
           @for (cell of system.cells; track cell.id; let i = $index) {
             <article
               class="calculation-card"
+              [id]="'cell-' + cell.id"
+              (dragover)="$event.preventDefault()"
+              (drop)="dropCell($event, cell)"
               [class.selected]="selectedCellId() === cell.id"
               [class.note-card]="cell.type === 'note'"
               (click)="selectCell(cell)"
             >
               <div class="card-header">
+                <button class="drag-handle" draggable="true" (dragstart)="startDrag($event, cell)" title="Drag to reorder calculation" aria-label="Drag to reorder calculation">⠿</button>
+                <button (click)="toggleCollapsed(cell.id); $event.stopPropagation()" [attr.aria-expanded]="!collapsed().has(cell.id)" aria-label="Expand or collapse calculation">{{ collapsed().has(cell.id) ? '›' : '⌄' }}</button>
                 <div class="card-title">
                   <span class="card-number">{{ i + 1 }}</span>
                   @if (cell.type === 'code') {
@@ -159,14 +161,23 @@
                 </div>
               </div>
 
+              @if (!collapsed().has(cell.id)) {
               @if (cell.type === 'equation') {
                 <div class="equation-layout">
                   <div class="cell-input-pane">
                     <label>Model equation</label>
                     <app-mathquill-input
+                      #equationEditor
                       [latex]="asEquation(cell).latex"
                       (latexChange)="equationChanged(asEquation(cell), $event)"
                     />
+                    <div class="variable-picker">
+                      <label>Insert input variable</label>
+                      @for (parameter of system.parameters; track parameter.id) {
+                        <button (mousedown)="$event.preventDefault()" (click)="equationEditor.insertVariable(parameter.name)" [title]="parameter.description + ': ' + parameter.value + ' ' + parameter.unit">{{ parameter.name }}</button>
+                      }
+                      <small>Use × between variables. Inputs are substituted when you run.</small>
+                    </div>
                   </div>
                   <div class="cell-result-pane">
                     <label>Result</label>
@@ -240,6 +251,7 @@
                   (ngModelChange)="noteChanged(asNote(cell), $event)"
                 ></textarea>
               }
+              }
             </article>
           }
 
@@ -255,7 +267,6 @@
     <aside class="parameters-panel panel">
       <div class="panel-heading">
         <span>Parameters &amp; Variables</span>
-        <button class="panel-action" (click)="addParameter()" title="Add parameter">＋</button>
       </div>
       @if (activeSystem(); as system) {
         <div class="parameter-section-header">
@@ -295,14 +306,6 @@
           <div class="computed-empty">Run the system to populate computed variables.</div>
         }
 
-        <div class="json-card">
-          <div class="json-card-icon">&#123; &#125;</div>
-          <div>
-            <strong>LLM-ready system JSON</strong>
-            <p>Export this system with its equations, code, parameters, units, and results.</p>
-          </div>
-          <button (click)="exportSystem()">Export</button>
-        </div>
       }
     </aside>
   </div>
@@ -312,4 +315,29 @@
     <span>Autosave enabled</span>
     <span>Local workspace</span>
   </footer>
+  @if (savedPath()) {
+    <div class="save-notice" role="status"><strong>File saved</strong><span>{{ savedPath() }}</span><button (click)="savedPath.set('')" aria-label="Dismiss saved file location">×</button></div>
+  }
+  @if (helpOpen()) {
+    <div class="help-backdrop" (click)="helpOpen.set(false)">
+      <section class="help-dialog" role="dialog" aria-modal="true" aria-labelledby="help-title" (click)="$event.stopPropagation()" (keydown.escape)="helpOpen.set(false)">
+        <header><h2 id="help-title">Using Alpha Solve App</h2><button autofocus (click)="helpOpen.set(false)" aria-label="Close help">Close</button></header>
+        <div class="help-layout">
+          <nav aria-label="Help topics">@for (section of helpSections; track section) {<button [class.current-project]="helpSection() === section" (click)="helpSection.set(section)">{{ section }}</button>}</nav>
+          <article><h3>{{ helpSection() }}</h3>
+          @switch (helpSection()) {
+            @case ('Getting started') {<p>Create a project with New, name its system, and enter inputs in the right panel. Add equation, Python function, or note cards below the calculations.</p><p>Click Run to calculate from top to bottom. Results appear alongside each card and in Computed. After changing inputs or order, run again.</p>}
+            @case ('Projects and files') {<p>New keeps your other projects in the explorer. Click a project name to switch; use its arrow to collapse or expand its systems. Each project can contain several systems.</p><p>Save writes the active project to an .asolve file. Open starts in Documents → Alpha Solve App and adds the chosen project to your explorer. A persistent notification displays the full saved path.</p><p>Autosave restores open projects on this computer. Save files separately for backups or sharing.</p>}
+            @case ('Equations and variables') {<p>Define named inputs on the right, then use the Insert input variable buttons under an equation to insert one at the cursor. Hover a variable button to see its value and unit.</p><p>Example: U = 0.5 × k × x_0². Type * for multiplication, / for fractions, ^ for powers, and _ for subscripts. Use arrow keys to leave a subscript or fraction.</p><p>Inputs and earlier results are available to later calculations. Use explicit multiplication between names. Units are labels in this release; they do not perform conversions or dimensional checks.</p>}
+            @case ('Python functions') {<p>Write exactly one Python function. Its arguments match input names or earlier calculated variables. Return a dictionary whose keys name the output variables.</p><pre>def calculate(m, k):
+    return {{ '{' }}"frequency": (k / m) ** 0.5{{ '}' }}</pre><p>Imports belong inside your function. Print output appears under Console output. Only run code from sources you trust. Runtime packages currently require an internet connection.</p>}
+            @case ('Arrange calculations') {<p>Drag the dotted handle at the left of a card onto another card to change calculation order. The arrow buttons remain available for keyboard users.</p><p>The arrow beside the handle collapses or expands a card. Reordering changes which values are available downstream, so run again afterward. Undo and Redo reverse edits within the active project.</p>}
+            @case ('JSON and LLMs') {<p>Export JSON saves the active system, including equations, Python source, parameters, units, notes, and stored results. Choose its location in the Save dialog; the full path remains visible afterward.</p><p>Give that JSON and docs/system.schema.json to your LLM. Import system reads a compatible JSON document and adds it to the current project. Imported code is not automatically executed. Review it before running.</p>}
+            @case ('About') {<p>Alpha Solve App</p><p>built on alpha solve by Jack Neeleman (icanthink42)</p><p>This desktop interface uses the existing Alpha Solve analytical solver. The original work provides the foundation for its mathematical capabilities.</p>}
+          }
+          </article>
+        </div>
+      </section>
+    </div>
+  }
 </div>
