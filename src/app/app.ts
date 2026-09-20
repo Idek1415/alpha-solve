@@ -164,6 +164,10 @@ export class App implements OnDestroy {
     this.selectedCellId.set(cell.id);
   }
 
+  protected parameterNames(): string[] {
+    return this.activeSystem()?.parameters.map(parameter => parameter.name) || [];
+  }
+
   protected addSystem(): void {
     const system = new Project(`System ${this.workspace().systems.length + 1}`);
     system.description = 'Describe the engineering system and its assumptions.';

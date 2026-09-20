@@ -32,17 +32,22 @@ def from_latex(latex_str: str):
     # Remove extra whitespace
     latex_str = latex_str.strip()
 
+    # Preserve named variables emitted by MathQuill rather than splitting
+    # e.g. "mass" into m*a*s*s during implicit multiplication parsing.
+    named_variables = re.findall(r'\\operatorname\{([A-Za-z][A-Za-z0-9_]*)\}', latex_str)
+    local_dict = {name: Symbol(name) for name in named_variables}
+    latex_str = re.sub(r'\\operatorname\{([A-Za-z][A-Za-z0-9_]*)\}', r'\1', latex_str)
     # Convert LaTeX to Python-like expression
     expr_str = _latex_to_sympy_str(latex_str)
 
     # Check if it's an equation (contains =)
     if '=' in expr_str:
         parts = expr_str.split('=', 1)
-        left = parse_expr(parts[0], transformations=(standard_transformations + (implicit_multiplication_application,)))
-        right = parse_expr(parts[1], transformations=(standard_transformations + (implicit_multiplication_application,)))
+        left = parse_expr(parts[0], local_dict=local_dict, transformations=(standard_transformations + (implicit_multiplication_application,)))
+        right = parse_expr(parts[1], local_dict=local_dict, transformations=(standard_transformations + (implicit_multiplication_application,)))
         return Eq(left, right)
     else:
-        return parse_expr(expr_str, transformations=(standard_transformations + (implicit_multiplication_application,)))
+        return parse_expr(expr_str, local_dict=local_dict, transformations=(standard_transformations + (implicit_multiplication_application,)))
 
 
 def _handle_derivatives(latex: str) -> str:
@@ -202,4 +207,3 @@ def to_latex(expr):
     """
     from sympy import latex
     return latex(expr)
-

@@ -35,6 +35,7 @@ declare const MathQuill: any;
 export class MathQuillInputComponent implements AfterViewInit, OnDestroy, OnChanges, ControlValueAccessor {
   @ViewChild('mathquillField', { static: false }) mathquillField!: ElementRef;
   @Input() latex: string = '';
+  @Input() variableNames: string[] = [];
   @Output() latexChange = new EventEmitter<string>();
   @Output() keydownEvent = new EventEmitter<KeyboardEvent>();
   @Output() navigateUp = new EventEmitter<void>();
@@ -64,6 +65,9 @@ export class MathQuillInputComponent implements AfterViewInit, OnDestroy, OnChan
   }
 
   ngOnChanges(changes: SimpleChanges): void {
+    if (changes['variableNames'] && this.mathField) {
+      this.mathField.config({ autoOperatorNames: this.operatorNames() });
+    }
     // When the latex input changes, update the MathQuill field
     if (changes['latex'] && !changes['latex'].firstChange && this.mathField) {
       const newLatex = changes['latex'].currentValue || '';
@@ -118,7 +122,7 @@ export class MathQuillInputComponent implements AfterViewInit, OnDestroy, OnChan
     this.mathField = MQ.MathField(this.mathquillField.nativeElement, {
       spaceBehavesLikeTab: true,
       autoCommands: 'pi theta phi sigma alpha beta gamma delta epsilon zeta eta iota kappa lambda mu nu xi omicron rho tau upsilon chi psi omega sqrt sum prod',
-      autoOperatorNames: allOperatorNames,
+      autoOperatorNames: this.operatorNames(),
       handlers: {
         edit: () => {
           if (this.isInitializing) {
@@ -216,6 +220,10 @@ export class MathQuillInputComponent implements AfterViewInit, OnDestroy, OnChan
   }
 
   // Public method to focus the MathQuill field
+  private operatorNames(): string {
+    const names = this.variableNames.filter(name => /^[A-Za-z]{2,}$/.test(name));
+    return [...new Set(['sin', 'cos', 'tan', 'log', 'ln', 'exp', 'min', 'max', 'int', ...names])].join(' ');
+  }
   insertVariable(name: string): void {
     if (!this.mathField || !/^[A-Za-z][A-Za-z0-9_]*$/.test(name)) return;
     const [base, ...subscript] = name.split('_');

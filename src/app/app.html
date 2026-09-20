@@ -63,7 +63,8 @@
 
             @if (activeSystem()?.id === system.id && !collapsed().has(system.id)) {
               <div class="tree-group">
-                <div class="group-label"><span>⌄</span><span class="tree-icon">ƒ</span>Calculations</div>
+                <button class="group-label group-toggle" (click)="toggleCollapsed(system.id + '-calculations')" [attr.aria-expanded]="!collapsed().has(system.id + '-calculations')"><span>{{ collapsed().has(system.id + '-calculations') ? '›' : '⌄' }}</span><span class="tree-icon">ƒ</span>Calculations</button>
+                @if (!collapsed().has(system.id + '-calculations')) {
                 @for (cell of system.cells; track cell.id; let i = $index) {
                   <button
                     class="cell-node"
@@ -79,9 +80,15 @@
                     }
                   </button>
                 }
+                }
               </div>
               <div class="tree-group parameters-node">
-                <div class="group-label"><span>›</span><span class="tree-icon">𝑥</span>Parameters <span class="tree-count">{{ system.parameters.length }}</span></div>
+                <button class="group-label group-toggle" (click)="toggleCollapsed(system.id + '-parameters')" [attr.aria-expanded]="collapsed().has(system.id + '-parameters')"><span>{{ collapsed().has(system.id + '-parameters') ? '⌄' : '›' }}</span><span class="tree-icon">𝑥</span>Parameters <span class="tree-count">{{ system.parameters.length }}</span></button>
+                @if (collapsed().has(system.id + '-parameters')) {
+                  @for (parameter of system.parameters; track parameter.id) {
+                    <div class="cell-node">{{ parameter.name }} = {{ parameter.value }} {{ parameter.unit }}</div>
+                  }
+                }
               </div>
             }
           </div>
@@ -168,6 +175,7 @@
                     <label>Model equation</label>
                     <app-mathquill-input
                       #equationEditor
+                      [variableNames]="parameterNames()"
                       [latex]="asEquation(cell).latex"
                       (latexChange)="equationChanged(asEquation(cell), $event)"
                     />

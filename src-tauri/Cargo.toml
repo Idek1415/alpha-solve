@@ -1,6 +1,6 @@
 [package]
 name = "alpha-solve-desktop"
-version = "0.2.0"
+version = "0.2.1"
 description = "Alpha Solve engineering workspace"
 authors = ["Alpha Solve"]
 edition = "2021"

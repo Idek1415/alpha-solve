@@ -1074,6 +1074,8 @@ button {
 }
 
 .help-button { margin-left: auto; padding: 6px 16px; }
+.group-toggle { width: 100%; border: 0; text-align: left; background: transparent; cursor: pointer; }
+.group-toggle:hover { background: #2b3742; }
 .help-button, .project-tab button, .variable-picker button, .help-dialog button,
 .card-header > button, .save-notice button {
   border: 1px solid #46525f; border-radius: 4px; color: #e3edf5; background: #28323c; cursor: pointer;
