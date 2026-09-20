@@ -1,0 +1,63 @@
+{
+  "format": "alpha-solve/system",
+  "version": 1,
+  "id": "example-mass-spring-damper",
+  "name": "Mass–Spring–Damper",
+  "description": "A damped second-order mechanical system.",
+  "parameters": [
+    {
+      "id": "parameter-mass",
+      "name": "m",
+      "description": "Mass",
+      "value": "10",
+      "unit": "kg",
+      "kind": "input",
+      "valueType": "numerical"
+    },
+    {
+      "id": "parameter-stiffness",
+      "name": "k",
+      "description": "Spring constant",
+      "value": "120",
+      "unit": "N/m",
+      "kind": "input",
+      "valueType": "numerical"
+    },
+    {
+      "id": "parameter-damping",
+      "name": "c",
+      "description": "Damping coefficient",
+      "value": "20",
+      "unit": "N·s/m",
+      "kind": "input",
+      "valueType": "numerical"
+    }
+  ],
+  "cells": [
+    {
+      "id": "equation-governing",
+      "type": "equation",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "latex": "U=0.5\\cdot k\\cdot x_0^2",
+      "solutions": []
+    },
+    {
+      "id": "code-dynamic-properties",
+      "type": "code",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "title": "Dynamic properties",
+      "source": "def calculate(m, k, c):\n    omega_n = (k / m) ** 0.5\n    zeta = c / (2 * (k * m) ** 0.5)\n    return {\"omega_n\": omega_n, \"zeta\": zeta}",
+      "functionName": "calculate",
+      "outputs": [
+        { "name": "omega_n", "value": "", "unit": "rad/s" },
+        { "name": "zeta", "value": "", "unit": "" }
+      ],
+      "stdout": "",
+      "status": "stale"
+    }
+  ],
+  "createdAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-01-01T00:00:00.000Z"
+}

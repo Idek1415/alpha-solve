@@ -1,0 +1,99 @@
+@if (isOpen()) {
+  <div class="plugin-manager-overlay" (click)="closeManager()">
+    <div class="plugin-manager" (click)="$event.stopPropagation()">
+      <div class="plugin-manager-header">
+        <h2>Plugin Manager</h2>
+        <button class="close-btn" (click)="closeManager()">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="plugin-manager-content">
+        <div class="add-plugin-section">
+          <h3>Add New Plugin</h3>
+          <p class="section-description">Enter the HTTPS git repository URL of the plugin you want to add.</p>
+          <div class="add-plugin-form">
+            <input
+              type="text"
+              [(ngModel)]="newPluginUrl"
+              placeholder="https://github.com/username/plugin.git"
+              class="plugin-url-input"
+              (keydown.enter)="addPlugin()"
+            />
+            <button class="add-btn" (click)="addPlugin()">Add Plugin</button>
+          </div>
+        </div>
+
+        @if (getAvailableRecommendedPlugins().length > 0) {
+          <div class="recommended-plugins-section">
+            <h3>Recommended Plugins</h3>
+            <p class="section-description">Preprovided plugins you can add with one click.</p>
+            <div class="recommended-plugins-list">
+              @for (plugin of getAvailableRecommendedPlugins(); track plugin.url) {
+                <div class="recommended-plugin-card">
+                  <div class="recommended-plugin-info">
+                    <h4 class="recommended-plugin-name">{{ plugin.name }}</h4>
+                    <p class="recommended-plugin-description">{{ plugin.description }}</p>
+                    <p class="recommended-plugin-url">{{ plugin.url }}</p>
+                  </div>
+                  <button class="add-recommended-btn" (click)="addRecommendedPlugin(plugin)" title="Add this plugin">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    Add
+                  </button>
+                </div>
+              }
+            </div>
+          </div>
+        }
+
+        <div class="plugins-list-section">
+          <h3>Installed Plugins</h3>
+          @if (pluginUrls().length === 0) {
+            <div class="empty-plugins">
+              <p>No plugins installed yet.</p>
+              <p class="hint">Add a plugin using the form above to get started.</p>
+            </div>
+          } @else {
+            <div class="plugins-list">
+              @for (url of pluginUrls(); track url) {
+                @let plugin = getPluginByUrl(url);
+                <div class="plugin-item">
+                  <div class="plugin-info">
+                    @if (plugin) {
+                      <div class="plugin-header">
+                        <h4 class="plugin-name">{{ plugin.name }}</h4>
+                        <span class="plugin-version">v{{ plugin.version }}</span>
+                      </div>
+                      <p class="plugin-id">ID: {{ plugin.id }}</p>
+                      @if (plugin.pythonLibraries && plugin.pythonLibraries.length > 0) {
+                        <div class="plugin-libraries">
+                          <strong>Python Libraries:</strong>
+                          <span class="library-list">{{ plugin.pythonLibraries.join(', ') }}</span>
+                        </div>
+                      }
+                    } @else {
+                      <div class="plugin-loading">
+                        <span class="loading-text">Loading plugin...</span>
+                      </div>
+                    }
+                    <p class="plugin-url">{{ url }}</p>
+                  </div>
+                  <button class="remove-btn" (click)="removePlugin(url)" title="Remove plugin">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M3 4L13 4M5 4V3C5 2.44772 5.44772 2 6 2H10C10.5523 2 11 2.44772 11 3V4M7 7V11M9 7V11M4 4L5 13C5 13.5523 5.44772 14 6 14H10C10.5523 14 11 13.5523 11 13L12 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+}
+

@@ -1,0 +1,355 @@
+.cell-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  height: 100%;
+  width: 100%;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
+  color: #666;
+  height: 100%;
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.empty-hint {
+  font-size: 0.875rem;
+  color: #999;
+  margin-top: 0.5rem;
+}
+
+.cell-item {
+  padding: 0;
+  background: #fff;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: stretch;
+  cursor: move;
+}
+
+.cell-item.nested {
+  margin-left: 0;
+  padding-left: 2rem;
+  border-left: none;
+}
+
+.cell-item:active {
+  opacity: 0.5;
+}
+
+.cell-item.drop-target {
+  border-top: 3px solid #667eea;
+}
+
+.cell-item.drop-target.nested {
+  border-top: 3px solid #667eea;
+}
+
+.drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  min-width: 24px;
+  padding: 0;
+  color: #d1d5db;
+  cursor: grab;
+  background: transparent;
+  transition: all 0.2s ease;
+  border-right: 1px solid transparent;
+}
+
+.drag-handle:hover {
+  color: #9ca3af;
+  background: #f9fafb;
+  border-right-color: #e5e7eb;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.cell-content-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+}
+
+.cell-content-wrapper.equation-cell {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.cell-content-wrapper.equation-cell app-mathquill-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.dropdowns-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: #fef3f2;
+  border-left: 1px solid #e5e7eb;
+  max-width: 250px;
+  min-width: 180px;
+  align-self: stretch;
+}
+
+.dropdown-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.dropdown-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.dropdown-select {
+  padding: 0.5rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  background: white;
+  font-size: 0.875rem;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.dropdown-select:hover {
+  border-color: #d1d5db;
+}
+
+.dropdown-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.solutions-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  background: #f9fafb;
+  border-left: 1px solid #e5e7eb;
+  max-width: 300px;
+  min-width: 200px;
+  height: 100%;
+  position: relative;
+}
+
+.solution-item {
+  padding: 1rem;
+  background: transparent;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 0.875rem;
+  color: #374151;
+  overflow-x: auto;
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.solution-item:hover {
+  background-color: #f3f4f6;
+}
+
+.solution-item:last-child {
+  border-bottom: none;
+}
+
+.context-tooltip {
+  position: absolute;
+  top: 0;
+  right: 100%;
+  margin-right: 0.5rem;
+  background: #1f2937;
+  color: #fff;
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  z-index: 1000;
+  max-width: 400px;
+  min-width: 250px;
+  pointer-events: none;
+}
+
+.context-tooltip-header {
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  border-bottom: 1px solid #374151;
+  background: #111827;
+  border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.context-tooltip-content {
+  padding: 1rem;
+  margin: 0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.note-input {
+  width: 100%;
+  padding: 1rem;
+  border: none;
+  border-bottom: 1px solid #e5e7eb;
+  border-radius: 0;
+  font-size: 0.9rem;
+  background: #fff;
+  transition: all 0.2s ease;
+  outline: none;
+  box-sizing: border-box;
+  cursor: text;
+}
+
+.note-input:focus {
+  background: #f9fafb;
+  border-bottom-color: #667eea;
+}
+
+.note-input::placeholder {
+  color: #9ca3af;
+}
+
+.folder-container {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.folder-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-width: 32px;
+  height: 48px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #6b7280;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.folder-toggle svg {
+  transform: rotate(-90deg);
+  transition: transform 0.2s ease;
+}
+
+.folder-toggle.expanded svg {
+  transform: rotate(0deg);
+}
+
+.folder-toggle:hover {
+  color: #374151;
+  background: #f9fafb;
+}
+
+.folder-input {
+  flex: 1;
+  padding: 1rem;
+  border: none;
+  border-radius: 0;
+  font-size: 0.9rem;
+  background: #fff;
+  transition: all 0.2s ease;
+  outline: none;
+  box-sizing: border-box;
+  font-weight: 500;
+  color: #374151;
+  cursor: text;
+}
+
+.folder-input:focus {
+  background: #f9fafb;
+}
+
+.folder-input::placeholder {
+  color: #9ca3af;
+}
+
+.nested-cells {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 0;
+  min-height: 20px;
+}
+
+.drop-zone-end {
+  min-height: 20px;
+  transition: all 0.2s ease;
+  border-top: 3px solid transparent;
+}
+
+.drop-zone-end.drop-target-end {
+  border-top-color: #667eea;
+}
+
+.drop-zone-end.nested {
+  margin-left: 2rem;
+}
+
+.add-cell-button {
+  min-height: 48px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.add-cell-button:hover {
+  background: #f9fafb;
+  color: #667eea;
+}
+
+.add-cell-button:active {
+  background: #f3f4f6;
+}
+
+.add-cell-button.nested {
+  margin-left: 2rem;
+}
+

@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alpha-solve.local/schemas/system-v1.json",
+  "title": "Alpha Solve Engineering System",
+  "description": "Portable, LLM-readable representation of one engineering system.",
+  "type": "object",
+  "required": ["format", "version", "id", "name", "parameters", "cells", "createdAt", "updatedAt"],
+  "properties": {
+    "format": { "const": "alpha-solve/system" },
+    "version": { "const": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "parameters": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/parameter" }
+    },
+    "cells": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/cell" }
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "parameter": {
+      "type": "object",
+      "required": ["id", "name", "description", "value", "unit", "kind", "valueType"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+        "description": { "type": "string" },
+        "value": { "type": "string" },
+        "unit": { "type": "string" },
+        "kind": { "enum": ["input", "computed"] },
+        "valueType": { "enum": ["numerical", "analytical"] }
+      },
+      "additionalProperties": false
+    },
+    "baseCell": {
+      "type": "object",
+      "required": ["id", "type", "createdAt", "updatedAt"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "enum": ["equation", "code", "note", "folder"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "context": {
+      "type": "object",
+      "required": ["variables"],
+      "properties": {
+        "variables": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "type", "values"],
+            "properties": {
+              "name": { "type": "string" },
+              "type": { "enum": ["numerical", "analytical"] },
+              "values": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "equationCell": {
+      "allOf": [
+        { "$ref": "#/$defs/baseCell" },
+        {
+          "type": "object",
+          "required": ["type", "latex"],
+          "properties": {
+            "type": { "const": "equation" },
+            "latex": { "type": "string" },
+            "context": { "$ref": "#/$defs/context" },
+            "solutions": { "type": "array", "items": { "type": "string" } },
+            "dropdowns": { "type": "array" },
+            "dropdownSelections": { "type": "array" }
+          }
+        }
+      ]
+    },
+    "codeCell": {
+      "allOf": [
+        { "$ref": "#/$defs/baseCell" },
+        {
+          "type": "object",
+          "required": ["type", "title", "source", "functionName", "outputs", "stdout", "status"],
+          "properties": {
+            "type": { "const": "code" },
+            "title": { "type": "string" },
+            "source": { "type": "string", "description": "Python source containing exactly one top-level function." },
+            "functionName": { "type": "string" },
+            "outputs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["name", "value"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "value": { "type": "string" },
+                  "unit": { "type": "string" }
+                },
+                "additionalProperties": false
+              }
+            },
+            "stdout": { "type": "string" },
+            "error": { "type": "string" },
+            "status": { "enum": ["idle", "stale", "running", "success", "error"] },
+            "executionTimeMs": { "type": "number", "minimum": 0 },
+            "context": { "$ref": "#/$defs/context" }
+          }
+        }
+      ]
+    },
+    "noteCell": {
+      "allOf": [
+        { "$ref": "#/$defs/baseCell" },
+        {
+          "type": "object",
+          "required": ["type", "content"],
+          "properties": {
+            "type": { "const": "note" },
+            "content": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "folderCell": {
+      "allOf": [
+        { "$ref": "#/$defs/baseCell" },
+        {
+          "type": "object",
+          "required": ["type", "name", "cells"],
+          "properties": {
+            "type": { "const": "folder" },
+            "name": { "type": "string" },
+            "cells": { "type": "array", "items": { "$ref": "#/$defs/cell" } }
+          }
+        }
+      ]
+    },
+    "cell": {
+      "oneOf": [
+        { "$ref": "#/$defs/equationCell" },
+        { "$ref": "#/$defs/codeCell" },
+        { "$ref": "#/$defs/noteCell" },
+        { "$ref": "#/$defs/folderCell" }
+      ]
+    }
+  }
+}
+

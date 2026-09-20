@@ -1,0 +1,315 @@
+<div class="application-shell">
+  <header class="titlebar">
+    <div class="brand-mark">A</div>
+    <div class="app-title">Alpha Solve <span>Engineering Workspace</span></div>
+    <div class="runtime-state" [class.busy]="isLoading() || isRunning()">
+      <span class="state-dot"></span>{{ statusMessage() }}
+    </div>
+  </header>
+
+  <nav class="menu-bar" aria-label="Application menu">
+    <button (click)="newWorkspace()">File</button>
+    <button (click)="undo()" [disabled]="!canUndo()">Edit</button>
+    <button>System</button>
+    <button>View</button>
+    <button>Help</button>
+  </nav>
+
+  <div class="toolbar">
+    <button class="tool-button" (click)="newWorkspace()" title="New workspace">
+      <span class="tool-icon">＋</span><span>New</span>
+    </button>
+    <button class="tool-button" (click)="openWorkspace()" title="Open workspace">
+      <span class="tool-icon">⌑</span><span>Open</span>
+    </button>
+    <button class="tool-button" (click)="saveWorkspace()" title="Save workspace">
+      <span class="tool-icon">▣</span><span>Save</span>
+    </button>
+    <div class="toolbar-divider"></div>
+    <button class="tool-button run-button" (click)="runSystem()" [disabled]="isLoading() || isRunning()">
+      <span class="tool-icon">{{ isRunning() ? '■' : '▶' }}</span>
+      <span>{{ isRunning() ? 'Running' : 'Run' }}</span>
+    </button>
+    <div class="toolbar-spacer"></div>
+    <button class="icon-button" (click)="undo()" [disabled]="!canUndo()" title="Undo">↶</button>
+    <button class="icon-button" (click)="redo()" [disabled]="!canRedo()" title="Redo">↷</button>
+    <button class="tool-button" (click)="importSystem()"><span class="tool-icon">⇩</span><span>Import system</span></button>
+    <button class="tool-button" (click)="exportSystem()"><span class="tool-icon">⇧</span><span>Export JSON</span></button>
+  </div>
+
+  <div class="workspace-grid">
+    <aside class="project-panel panel">
+      <div class="panel-heading">
+        <span>Project Explorer</span>
+        <button class="panel-action" (click)="addSystem()" title="Add system">＋</button>
+      </div>
+      <div class="workspace-name-row">
+        <span class="disclosure">⌄</span>
+        <span class="tree-icon">◫</span>
+        <input
+          class="workspace-name"
+          [ngModel]="workspace().name"
+          (ngModelChange)="workspace().name = $event; metadataChanged()"
+          aria-label="Workspace name"
+        />
+      </div>
+
+      <div class="tree-scroll">
+        @for (system of workspace().systems; track system.id) {
+          <div class="system-tree" [class.active-system]="activeSystem()?.id === system.id">
+            <button class="system-node" (click)="selectSystem(system.id)">
+              <span class="disclosure">⌄</span>
+              <span class="tree-icon system-icon">∿</span>
+              <span class="tree-label">{{ system.name }}</span>
+              <span class="tree-count">{{ system.cells.length }}</span>
+              <span class="tree-delete" (click)="deleteSystem(system, $event)">×</span>
+            </button>
+
+            @if (activeSystem()?.id === system.id) {
+              <div class="tree-group">
+                <div class="group-label"><span>⌄</span><span class="tree-icon">ƒ</span>Calculations</div>
+                @for (cell of system.cells; track cell.id; let i = $index) {
+                  <button
+                    class="cell-node"
+                    [class.selected]="selectedCellId() === cell.id"
+                    (click)="selectCell(cell)"
+                  >
+                    <span class="cell-type-icon" [attr.data-type]="cell.type">
+                      {{ cell.type === 'equation' ? '∑' : cell.type === 'code' ? '⌘' : cell.type === 'note' ? '¶' : '▤' }}
+                    </span>
+                    <span>{{ i + 1 }}. {{ cellLabel(cell) }}</span>
+                    @if (cell.type === 'code' && asCode(cell).status === 'stale') {
+                      <span class="stale-marker" title="Results are stale"></span>
+                    }
+                  </button>
+                }
+              </div>
+              <div class="tree-group parameters-node">
+                <div class="group-label"><span>›</span><span class="tree-icon">𝑥</span>Parameters <span class="tree-count">{{ system.parameters.length }}</span></div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="project-panel-footer">
+        <button (click)="addSystem()">＋ New system</button>
+      </div>
+    </aside>
+
+    <main class="calculation-panel panel">
+      @if (activeSystem(); as system) {
+        <div class="calculation-header">
+          <div>
+            <input
+              class="system-title-input"
+              [ngModel]="system.name"
+              (ngModelChange)="system.name = $event; metadataChanged()"
+              aria-label="System name"
+            />
+            <input
+              class="system-description-input"
+              [ngModel]="system.description"
+              (ngModelChange)="system.description = $event; metadataChanged()"
+              aria-label="System description"
+            />
+          </div>
+          <div class="header-badges">
+            <span class="badge">{{ pluginCount() }} solver{{ pluginCount() === 1 ? '' : 's' }}</span>
+            <span class="badge">schema v1</span>
+          </div>
+        </div>
+
+        <div class="cards-scroll">
+          @if (errorMessage()) {
+            <div class="global-error">
+              <strong>Runtime error</strong>
+              <span>{{ errorMessage() }}</span>
+              <button (click)="errorMessage.set(null)">×</button>
+            </div>
+          }
+
+          @for (cell of system.cells; track cell.id; let i = $index) {
+            <article
+              class="calculation-card"
+              [class.selected]="selectedCellId() === cell.id"
+              [class.note-card]="cell.type === 'note'"
+              (click)="selectCell(cell)"
+            >
+              <div class="card-header">
+                <div class="card-title">
+                  <span class="card-number">{{ i + 1 }}</span>
+                  @if (cell.type === 'code') {
+                    <input
+                      [ngModel]="asCode(cell).title"
+                      (ngModelChange)="asCode(cell).title = $event; metadataChanged()"
+                      aria-label="Code cell title"
+                    />
+                  } @else {
+                    <span>{{ cell.type === 'equation' ? 'Equation' : cell.type === 'note' ? 'Engineering note' : 'Folder' }}</span>
+                  }
+                </div>
+                <div class="card-actions">
+                  @if (cell.type === 'equation' || cell.type === 'code') {
+                    <button (click)="runFromCell(cell); $event.stopPropagation()" [disabled]="isRunning()" title="Run from this cell">▶</button>
+                  }
+                  <button (click)="moveCell(cell, -1); $event.stopPropagation()" [disabled]="i === 0" title="Move up">↑</button>
+                  <button (click)="moveCell(cell, 1); $event.stopPropagation()" [disabled]="i === system.cells.length - 1" title="Move down">↓</button>
+                  <button class="danger-action" (click)="deleteCell(cell); $event.stopPropagation()" title="Delete cell">×</button>
+                </div>
+              </div>
+
+              @if (cell.type === 'equation') {
+                <div class="equation-layout">
+                  <div class="cell-input-pane">
+                    <label>Model equation</label>
+                    <app-mathquill-input
+                      [latex]="asEquation(cell).latex"
+                      (latexChange)="equationChanged(asEquation(cell), $event)"
+                    />
+                  </div>
+                  <div class="cell-result-pane">
+                    <label>Result</label>
+                    @if (asEquation(cell).solutions?.length) {
+                      @for (solution of asEquation(cell).solutions; track $index) {
+                        <div class="math-result"><app-latex-renderer [latex]="solution" /></div>
+                      }
+                    } @else {
+                      <div class="empty-result">Run the system to calculate</div>
+                    }
+                  </div>
+                </div>
+              } @else if (cell.type === 'code') {
+                <div class="code-layout">
+                  <div class="code-editor-pane">
+                    <div class="code-label-row">
+                      <label>Python function</label>
+                      <span class="execution-state" [attr.data-status]="asCode(cell).status">
+                        {{ asCode(cell).status }}
+                      </span>
+                    </div>
+                    <textarea
+                      class="code-editor"
+                      wrap="off"
+                      spellcheck="false"
+                      [ngModel]="asCode(cell).source"
+                      (ngModelChange)="codeChanged(asCode(cell), $event)"
+                    ></textarea>
+                  </div>
+                  <div class="code-result-pane">
+                    <label>Returned variables</label>
+                    @if (asCode(cell).status === 'running') {
+                      <div class="empty-result"><span class="mini-spinner"></span>Executing function…</div>
+                    } @else if (asCode(cell).error) {
+                      <pre class="code-error">{{ asCode(cell).error }}</pre>
+                    } @else if (asCode(cell).outputs.length) {
+                      <div class="output-list">
+                        @for (output of asCode(cell).outputs; track output.name) {
+                          <div class="output-row">
+                            <code>{{ output.name }}</code>
+                            <span class="output-value">{{ output.value || '—' }}</span>
+                            <input
+                              class="unit-input"
+                              placeholder="unit"
+                              [ngModel]="output.unit"
+                              (ngModelChange)="output.unit = $event; outputUnitChanged(asCode(cell))"
+                              aria-label="Output unit"
+                            />
+                          </div>
+                        }
+                      </div>
+                      @if (asCode(cell).executionTimeMs !== undefined) {
+                        <div class="execution-time">Completed in {{ asCode(cell).executionTimeMs | number:'1.0-1' }} ms</div>
+                      }
+                    } @else {
+                      <div class="empty-result">Return a dictionary of named values</div>
+                    }
+                    @if (asCode(cell).stdout) {
+                      <details class="stdout-block">
+                        <summary>Console output</summary>
+                        <pre>{{ asCode(cell).stdout }}</pre>
+                      </details>
+                    }
+                  </div>
+                </div>
+              } @else if (cell.type === 'note') {
+                <textarea
+                  class="note-editor"
+                  placeholder="Explain an assumption, method, or design decision…"
+                  [ngModel]="asNote(cell).content"
+                  (ngModelChange)="noteChanged(asNote(cell), $event)"
+                ></textarea>
+              }
+            </article>
+          }
+
+          <div class="add-cell-row">
+            <button (click)="addCell('equation')"><span>∑</span> Equation</button>
+            <button (click)="addCell('code')"><span>⌘</span> Python function</button>
+            <button (click)="addCell('note')"><span>¶</span> Note</button>
+          </div>
+        </div>
+      }
+    </main>
+
+    <aside class="parameters-panel panel">
+      <div class="panel-heading">
+        <span>Parameters &amp; Variables</span>
+        <button class="panel-action" (click)="addParameter()" title="Add parameter">＋</button>
+      </div>
+      @if (activeSystem(); as system) {
+        <div class="parameter-section-header">
+          <span>Inputs</span><span>{{ system.parameters.length }}</span>
+        </div>
+        <div class="parameter-table">
+          <div class="parameter-table-head">
+            <span>Variable</span><span>Description</span><span>Value</span><span>Unit</span><span></span>
+          </div>
+          @for (parameter of system.parameters; track parameter.id) {
+            <div class="parameter-row">
+              <input class="variable-name" [(ngModel)]="parameter.name" (ngModelChange)="parameterChanged()" aria-label="Variable name" />
+              <input [(ngModel)]="parameter.description" (ngModelChange)="parameterChanged()" aria-label="Description" />
+              <input class="parameter-value" [(ngModel)]="parameter.value" (ngModelChange)="parameterChanged()" aria-label="Value" />
+              <input class="parameter-unit" [(ngModel)]="parameter.unit" (ngModelChange)="parameterChanged()" aria-label="Unit" />
+              <button (click)="deleteParameter(parameter)" title="Delete parameter">×</button>
+            </div>
+          }
+        </div>
+
+        <button class="add-parameter-button" (click)="addParameter()">＋ Add input parameter</button>
+
+        <div class="parameter-section-header computed-heading">
+          <span>Computed</span><span>{{ computedVariables().length }}</span>
+        </div>
+        @if (computedVariables().length) {
+          <div class="computed-list">
+            @for (variable of computedVariables(); track variable.name) {
+              <div class="computed-row">
+                <code>{{ variable.name }}</code>
+                <span>{{ variable.value }}</span>
+                <span>{{ variable.unit }}</span>
+              </div>
+            }
+          </div>
+        } @else {
+          <div class="computed-empty">Run the system to populate computed variables.</div>
+        }
+
+        <div class="json-card">
+          <div class="json-card-icon">&#123; &#125;</div>
+          <div>
+            <strong>LLM-ready system JSON</strong>
+            <p>Export this system with its equations, code, parameters, units, and results.</p>
+          </div>
+          <button (click)="exportSystem()">Export</button>
+        </div>
+      }
+    </aside>
+  </div>
+
+  <footer class="statusbar">
+    <span><span class="status-indicator" [class.ready]="!isLoading() && !errorMessage()"></span>{{ statusMessage() }}</span>
+    <span>Autosave enabled</span>
+    <span>Local workspace</span>
+  </footer>
+</div>

@@ -1,0 +1,251 @@
+<div class="cell-list">
+  @if (cells.length === 0) {
+    <div class="empty-state">
+      <p>No cells yet</p>
+      <span class="empty-hint">Add cells to get started</span>
+    </div>
+  }
+
+  @for (cell of cells; track cell.id) {
+    <div
+      class="cell-item"
+      [attr.data-cell-id]="cell.id"
+      [class.drop-target]="dropTargetId === cell.id"
+      (dragover)="onDragOver($event, cell)"
+      (dragleave)="onDragLeave($event)"
+      (drop)="onDrop($event, cell, cells)"
+    >
+      <div class="drag-handle"
+           draggable="true"
+           (dragstart)="onDragStart($event, cell, cells)"
+           (dragend)="onDragEnd()">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="6" cy="4" r="1.5" fill="currentColor"/>
+          <circle cx="10" cy="4" r="1.5" fill="currentColor"/>
+          <circle cx="6" cy="8" r="1.5" fill="currentColor"/>
+          <circle cx="10" cy="8" r="1.5" fill="currentColor"/>
+          <circle cx="6" cy="12" r="1.5" fill="currentColor"/>
+          <circle cx="10" cy="12" r="1.5" fill="currentColor"/>
+        </svg>
+      </div>
+
+      @if (cell.type === 'equation') {
+        <div class="cell-content-wrapper equation-cell">
+          <app-mathquill-input
+            [latex]="asEquationCell(cell).latex"
+            (latexChange)="onLatexChange(asEquationCell(cell), $event, cells)"
+            (keydownEvent)="onCellKeyDown($event, cell, cells)"
+            (navigateUp)="onNavigateUp(cell, cells)"
+            (navigateDown)="onNavigateDown(cell, cells)"
+            (createCellBelow)="onCreateCellBelow(cell, cells)"
+          />
+          @if (asEquationCell(cell).dropdowns && asEquationCell(cell).dropdowns!.length > 0) {
+            <div class="dropdowns-panel">
+              @for (dropdown of asEquationCell(cell).dropdowns; track $index; let i = $index) {
+                <div class="dropdown-item">
+                  <label class="dropdown-label">{{ dropdown.title }}</label>
+                  <select
+                    class="dropdown-select"
+                    [(ngModel)]="asEquationCell(cell).dropdownSelections![i].selectedItem"
+                    (ngModelChange)="onDropdownChange(asEquationCell(cell))">
+                    @for (item of dropdown.items; track item) {
+                      <option [value]="item">{{ item }}</option>
+                    }
+                  </select>
+                </div>
+              }
+            </div>
+          }
+          @if (asEquationCell(cell).solutions && asEquationCell(cell).solutions!.length > 0) {
+            <div class="solutions-panel"
+                 (mouseenter)="onSolutionMouseEnter(cell.id)"
+                 (mouseleave)="onSolutionMouseLeave()">
+              @for (solution of asEquationCell(cell).solutions; track $index) {
+                <div class="solution-item" (click)="onSolutionClick(solution)">
+                  <app-latex-renderer [latex]="solution"></app-latex-renderer>
+                </div>
+              }
+              @if (isDebugMode && hoveredCellId === cell.id) {
+                <div class="context-tooltip">
+                  <div class="context-tooltip-header">Context</div>
+                  <pre class="context-tooltip-content">{{ formatContext(asEquationCell(cell)) }}</pre>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      } @else if (cell.type === 'note') {
+        <div class="cell-content-wrapper">
+          <input
+            type="text"
+            class="note-input"
+            [(ngModel)]="asNoteCell(cell).content"
+            (ngModelChange)="onNoteChange(asNoteCell(cell), $event)"
+            (keydown)="onCellKeyDown($event, cell, cells)"
+            placeholder="Enter note..."
+          />
+        </div>
+      } @else if (cell.type === 'folder') {
+        <div class="folder-container">
+          <button
+            class="folder-toggle"
+            (click)="toggleFolder(cell.id)"
+            [class.expanded]="isFolderExpanded(cell.id)"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <input
+            type="text"
+            class="folder-input"
+            [(ngModel)]="asFolderCell(cell).name"
+            (ngModelChange)="onFolderNameChange(asFolderCell(cell), $event)"
+            (keydown)="onCellKeyDown($event, cell, cells)"
+            placeholder="Folder name..."
+          />
+        </div>
+      }
+    </div>
+
+    @if (cell.type === 'folder' && isFolderExpanded(cell.id)) {
+      <div class="nested-cells">
+        @for (nestedCell of asFolderCell(cell).cells; track nestedCell.id) {
+          <div
+            class="cell-item nested"
+            [attr.data-cell-id]="nestedCell.id"
+            [class.drop-target]="dropTargetId === nestedCell.id"
+            (dragover)="onDragOver($event, nestedCell)"
+            (dragleave)="onDragLeave($event)"
+            (drop)="onDrop($event, nestedCell, asFolderCell(cell).cells)"
+          >
+            <div class="drag-handle"
+                 draggable="true"
+                 (dragstart)="onDragStart($event, nestedCell, asFolderCell(cell).cells)"
+                 (dragend)="onDragEnd()">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="6" cy="4" r="1.5" fill="currentColor"/>
+                <circle cx="10" cy="4" r="1.5" fill="currentColor"/>
+                <circle cx="6" cy="8" r="1.5" fill="currentColor"/>
+                <circle cx="10" cy="8" r="1.5" fill="currentColor"/>
+                <circle cx="6" cy="12" r="1.5" fill="currentColor"/>
+                <circle cx="10" cy="12" r="1.5" fill="currentColor"/>
+              </svg>
+            </div>
+
+            @if (nestedCell.type === 'equation') {
+              <div class="cell-content-wrapper equation-cell">
+                <app-mathquill-input
+                  [latex]="asEquationCell(nestedCell).latex"
+                  (latexChange)="onLatexChange(asEquationCell(nestedCell), $event, asFolderCell(cell).cells)"
+                  (keydownEvent)="onCellKeyDown($event, nestedCell, asFolderCell(cell).cells)"
+                  (navigateUp)="onNavigateUp(nestedCell, asFolderCell(cell).cells)"
+                  (navigateDown)="onNavigateDown(nestedCell, asFolderCell(cell).cells)"
+                  (createCellBelow)="onCreateCellBelow(nestedCell, asFolderCell(cell).cells)"
+                />
+                @if (asEquationCell(nestedCell).dropdowns && asEquationCell(nestedCell).dropdowns!.length > 0) {
+                  <div class="dropdowns-panel">
+                    @for (dropdown of asEquationCell(nestedCell).dropdowns; track $index; let i = $index) {
+                      <div class="dropdown-item">
+                        <label class="dropdown-label">{{ dropdown.title }}</label>
+                        <select
+                          class="dropdown-select"
+                          [(ngModel)]="asEquationCell(nestedCell).dropdownSelections![i].selectedItem"
+                          (ngModelChange)="onDropdownChange(asEquationCell(nestedCell))">
+                          @for (item of dropdown.items; track item) {
+                            <option [value]="item">{{ item }}</option>
+                          }
+                        </select>
+                      </div>
+                    }
+                  </div>
+                }
+                @if (asEquationCell(nestedCell).solutions && asEquationCell(nestedCell).solutions!.length > 0) {
+                  <div class="solutions-panel"
+                       (mouseenter)="onSolutionMouseEnter(nestedCell.id)"
+                       (mouseleave)="onSolutionMouseLeave()">
+                    @for (solution of asEquationCell(nestedCell).solutions; track $index) {
+                      <div class="solution-item" (click)="onSolutionClick(solution)">
+                        <app-latex-renderer [latex]="solution"></app-latex-renderer>
+                      </div>
+                    }
+                    @if (isDebugMode && hoveredCellId === nestedCell.id) {
+                      <div class="context-tooltip">
+                        <div class="context-tooltip-header">Context</div>
+                        <pre class="context-tooltip-content">{{ formatContext(asEquationCell(nestedCell)) }}</pre>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            } @else if (nestedCell.type === 'note') {
+              <div class="cell-content-wrapper">
+                <input
+                  type="text"
+                  class="note-input"
+                  [(ngModel)]="asNoteCell(nestedCell).content"
+                  (ngModelChange)="onNoteChange(asNoteCell(nestedCell), $event)"
+                  (keydown)="onCellKeyDown($event, nestedCell, asFolderCell(cell).cells)"
+                  placeholder="Enter note..."
+                />
+              </div>
+            } @else if (nestedCell.type === 'folder') {
+              <div class="folder-container">
+                <button
+                  class="folder-toggle"
+                  (click)="toggleFolder(nestedCell.id)"
+                  [class.expanded]="isFolderExpanded(nestedCell.id)"
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+                <input
+                  type="text"
+                  class="folder-input"
+                  [(ngModel)]="asFolderCell(nestedCell).name"
+                  (ngModelChange)="onFolderNameChange(asFolderCell(nestedCell), $event)"
+                  (keydown)="onCellKeyDown($event, nestedCell, asFolderCell(cell).cells)"
+                  placeholder="Folder name..."
+                />
+              </div>
+            }
+          </div>
+        }
+
+        <!-- Drop zone at the end of nested cells -->
+        <div
+          class="drop-zone-end nested"
+          [class.drop-target-end]="dropAtEndTarget === getEndZoneId(cell.id)"
+          (dragover)="onDragOverEnd($event, getEndZoneId(cell.id))"
+          (dragleave)="onDragLeaveEnd($event)"
+          (drop)="onDropAtEnd($event, asFolderCell(cell).cells)"
+        ></div>
+
+        <!-- Add cell button for nested cells -->
+        <button class="add-cell-button nested" (click)="addNewCell(asFolderCell(cell).cells)">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M10 5V15M5 10H15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+    }
+  }
+
+  <!-- Drop zone at the end -->
+  <div
+    class="drop-zone-end"
+    [class.drop-target-end]="dropAtEndTarget === 'main-end'"
+    (dragover)="onDragOverEnd($event, 'main-end')"
+    (dragleave)="onDragLeaveEnd($event)"
+    (drop)="onDropAtEnd($event, cells)"
+  ></div>
+
+  <!-- Add cell button -->
+  <button class="add-cell-button" (click)="addNewCell(cells)">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M10 5V15M5 10H15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+  </button>
+</div>
+
