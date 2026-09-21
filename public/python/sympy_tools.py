@@ -39,10 +39,16 @@ def from_latex(latex_str: str):
     latex_str = re.sub(r'\\operatorname\{([A-Za-z][A-Za-z0-9_]*)\}', r'\1', latex_str)
     # Convert LaTeX to Python-like expression
     expr_str = _latex_to_sympy_str(latex_str)
-    # Subscripted engineering identifiers are single symbols, not products.
-    # Examples: x_0, sigma_max, omega_n.
-    for name in re.findall(r'\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+\b', expr_str):
-        local_dict[name] = Symbol(name)
+    # Every non-function identifier is a single engineering symbol. This makes
+    # TMR, mass, sigma_max, and x_0 unambiguous. Multiplication must be explicit
+    # (x\cdot y), so "xy" intentionally means the variable named xy.
+    reserved_names = {
+        'sqrt', 'sin', 'cos', 'tan', 'ln', 'log', 'exp',
+        'Derivative', 'Integral', 'Eq', 'pi', 'True', 'False'
+    }
+    for name in re.findall(r'\b[A-Za-z][A-Za-z0-9_]*\b', expr_str):
+        if name not in reserved_names:
+            local_dict.setdefault(name, Symbol(name))
 
     # Check if it's an equation (contains =)
     if '=' in expr_str:
@@ -128,6 +134,8 @@ def _latex_to_sympy_str(latex: str) -> str:
 
     # Remove \left, \right, and other formatting commands
     latex = re.sub(r'\\left|\\right', '', latex)
+    # MathQuill may emit square grouping brackets; SymPy needs parentheses.
+    latex = latex.replace('[', '(').replace(']', ')')
 
     # Handle subscripts with braces first: x_{11} -> x_11, v_{\alpha} -> v_\alpha
     latex = re.sub(r'_\{([^{}]*)\}', r'_\1', latex)

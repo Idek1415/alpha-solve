@@ -23,6 +23,7 @@ Alpha Solve is a local-first engineering workspace for equations, parameters, ex
 - Math-formatted input and computed variable names, including subscripts
 - Coherent-SI input normalization and direct-equation unit inference
 - Named equations and self-describing LLM analysis exports
+- Direct re-import of both portable system JSON and self-describing LLM JSON
 - Dark and light engineering-workspace themes
 - Executable code cells containing one top-level Python function
 - Autosave, recovery, undo, and redo

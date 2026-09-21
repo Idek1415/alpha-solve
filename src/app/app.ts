@@ -451,10 +451,77 @@ export class App implements OnDestroy {
       instructions: [
         'Treat parameters as authoritative user inputs; preserve their units.',
         'Cells are calculations. Equations store LaTeX in latex; Python cells return named outputs.',
-        'Variable identifiers use underscores for subscripts: x_0 is displayed as x subscript 0.',
+        'Use the exact canonical variable identifiers defined below. Identifiers are case-sensitive.',
+        'Use explicit multiplication in equations: write x\\cdot y, never xy when x times y is intended.',
         'Calculation order is an initial evaluation order, not a one-way dependency rule. Re-evaluate dependencies until values stabilize.',
         'Check dimensional consistency before trusting numerical conclusions. Clearly identify assumptions, unresolved symbols, and unsupported operations.'
       ],
+      importFormat: {
+        acceptedByAlphaSolve: [
+          'A portable document whose root format is alpha-solve/system.',
+          'This self-describing wrapper whose root format is alpha-solve/llm-analysis and whose system property is a complete alpha-solve/system object.'
+        ],
+        llmWrapperRequiredShape: {
+          format: 'alpha-solve/llm-analysis',
+          version: 1,
+          system: 'REQUIRED: complete object matching portableSystemRequiredShape below'
+        },
+        portableSystemRequiredShape: {
+          format: 'alpha-solve/system', version: 1, id: 'non-empty unique string',
+          name: 'non-empty system name', description: 'plain-text engineering description',
+          parameters: 'array of parameter objects in the exact parameter format below',
+          cells: 'array of equation, code, note, or folder cells in evaluation order',
+          createdAt: 'ISO-8601 timestamp string', updatedAt: 'ISO-8601 timestamp string'
+        },
+        exactParameterFormat: {
+          id: 'non-empty unique string',
+          name: 'canonical identifier matching ^[A-Za-z][A-Za-z0-9_]*$',
+          description: 'plain-text meaning and assumptions',
+          value: 'string containing a decimal number or symbolic expression; never a JSON numeric value',
+          unit: 'separate unit string such as Pa, GPa, kg/m^3, N·s/m, or empty for dimensionless',
+          kind: 'input', valueType: 'numerical or analytical'
+        },
+        exactEquationCellFormat: {
+          id: 'non-empty unique string', type: 'equation', title: 'human-readable equation name',
+          latex: 'LaTeX equation using canonical variable identifiers and explicit \\cdot multiplication',
+          context: { variables: [] }, solutions: [],
+          createdAt: 'ISO-8601 timestamp string', updatedAt: 'ISO-8601 timestamp string'
+        },
+        exactNoteCellFormat: {
+          id: 'non-empty unique string', type: 'note', content: 'plain text',
+          createdAt: 'ISO-8601 timestamp string', updatedAt: 'ISO-8601 timestamp string'
+        },
+        exactCodeCellFormat: {
+          id: 'non-empty unique string', type: 'code', title: 'human-readable name',
+          source: 'Python source containing exactly one top-level function', functionName: 'calculate',
+          outputs: 'array of {name, value, unit}; names follow the canonical identifier rules',
+          stdout: '', status: 'stale', context: { variables: [] },
+          createdAt: 'ISO-8601 timestamp string', updatedAt: 'ISO-8601 timestamp string'
+        },
+        exactFolderCellFormat: {
+          id: 'non-empty unique string', type: 'folder', name: 'human-readable folder name',
+          cells: 'array of nested equation, code, note, or folder cells',
+          createdAt: 'ISO-8601 timestamp string', updatedAt: 'ISO-8601 timestamp string'
+        }
+      },
+      variableLabeling: {
+        identifierPattern: '^[A-Za-z][A-Za-z0-9_]*$', caseSensitive: true,
+        canonicalExamples: ['x', 'x_0', 'omega_n', 'sigma_max', 'TMR', 'P_c'],
+        invalidExamples: ['x 0', 'mass-flow', '2theta', 'x₀'],
+        subscripts: 'Store x subscript 0 as x_0. In LaTeX, x_0 or x_{0} both map to canonical x_0.',
+        greekNames: 'Store Greek labels as ASCII names: omega_n, alpha, sigma_max. The UI renders recognized Greek names mathematically.',
+        acronymsAndWords: 'Multi-letter names such as TMR and mass are one variable. Never concatenate names to imply multiplication.',
+        equationReferences: 'Equations and Python arguments must exactly match parameter or computed-output spelling and capitalization.',
+        multiplication: 'Always use \\cdot or \\times between variables. Example: F=m\\cdot a.'
+      },
+      valueEntry: {
+        valuesAreStrings: true,
+        numericalExamples: ['0.125', '210000000000', '1e-6'],
+        analyticalExamples: ['sqrt(2)', 'pi/4'],
+        unitsAreSeparate: 'Use value: "210" and unit: "GPa", not value: "210 GPa".',
+        computedValues: 'Leave context.variables and solutions empty unless they are verified results.',
+        pythonOutputs: 'A Python function returns a dictionary whose keys exactly match declared output names.'
+      },
       solverCapabilities: this.solverCapabilities,
       organization: {
         parameters: 'Named input values with descriptions and units.',

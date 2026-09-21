@@ -138,8 +138,14 @@ export class Project {
    * Create a Project instance from a JSON string
    */
   static fromString(json: string): Project {
-    const data = JSON.parse(json) as SerializableProject;
-    return Project.fromJSON(data);
+    const data = JSON.parse(json) as SerializableProject | LlmAnalysisDocument;
+    if (data.format === LLM_ANALYSIS_FORMAT) {
+      if (!data.system || data.system.format !== SYSTEM_FORMAT) {
+        throw new Error('The LLM analysis document does not contain a valid Alpha Solve system.');
+      }
+      return Project.fromJSON(data.system);
+    }
+    return Project.fromJSON(data as SerializableProject);
   }
 
   /**
@@ -519,4 +525,13 @@ export interface SerializableProject {
   cells: SerializableCell[];
   createdAt: string;
   updatedAt: string;
+}
+
+export const LLM_ANALYSIS_FORMAT = 'alpha-solve/llm-analysis';
+
+export interface LlmAnalysisDocument {
+  format: typeof LLM_ANALYSIS_FORMAT;
+  version: number;
+  system: SerializableProject;
+  [key: string]: unknown;
 }

@@ -59,4 +59,19 @@ describe('App', () => {
     expect(app.collapsed().has(cell.id)).toBeFalse();
     expect(app.activeSystem().cells[0]).toBe(cell);
   });
+
+  it('exports self-describing LLM input and variable-format rules', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    const download = spyOn(app, 'downloadJson');
+
+    app.exportLlmSystem();
+
+    const payload = JSON.parse(String(download.calls.mostRecent().args[1]));
+    expect(payload.format).toBe('alpha-solve/llm-analysis');
+    expect(payload.importFormat.portableSystemRequiredShape.format).toBe('alpha-solve/system');
+    expect(payload.variableLabeling.identifierPattern).toBe('^[A-Za-z][A-Za-z0-9_]*$');
+    expect(payload.valueEntry.valuesAreStrings).toBeTrue();
+    expect(payload.system.format).toBe('alpha-solve/system');
+  });
 });

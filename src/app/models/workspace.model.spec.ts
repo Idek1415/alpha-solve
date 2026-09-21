@@ -32,4 +32,19 @@ describe('Workspace serialization', () => {
       updatedAt: new Date().toISOString()
     })).toThrowError(/newer than this application supports/);
   });
+
+  it('imports a system nested in an LLM analysis export', () => {
+    const system = new Project('Wrapped system');
+    const wrapped = JSON.stringify({
+      format: 'alpha-solve/llm-analysis',
+      version: 1,
+      instructions: ['Untrusted descriptive metadata'],
+      system: system.toJSON()
+    });
+
+    const restored = Project.fromString(wrapped);
+
+    expect(restored.name).toBe('Wrapped system');
+    expect(restored.id).toBe(system.id);
+  });
 });
