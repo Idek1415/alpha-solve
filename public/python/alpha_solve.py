@@ -18,6 +18,7 @@ class Variable:
     name: str
     type: str  # 'numerical' or 'analytical'
     values: List[str]
+    unit: str = ''
 
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> 'Variable':
@@ -25,7 +26,8 @@ class Variable:
         return Variable(
             name=data['name'],
             type=data['type'],
-            values=data['values']
+            values=data['values'],
+            unit=data.get('unit', '')
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -33,14 +35,14 @@ class Variable:
         return asdict(self)
 
     @staticmethod
-    def create_numerical(name: str, values: List[str]) -> 'Variable':
+    def create_numerical(name: str, values: List[str], unit: str = '') -> 'Variable':
         """Create a numerical variable"""
-        return Variable(name=name, type='numerical', values=values)
+        return Variable(name=name, type='numerical', values=values, unit=unit)
 
     @staticmethod
-    def create_analytical(name: str, values: List[str]) -> 'Variable':
+    def create_analytical(name: str, values: List[str], unit: str = '') -> 'Variable':
         """Create an analytical variable"""
-        return Variable(name=name, type='analytical', values=values)
+        return Variable(name=name, type='analytical', values=values, unit=unit)
 
 
 @dataclass
@@ -290,4 +292,3 @@ def parse_proc_macro_input(json_str: str) -> ProcMacroInput:
     This is the main function to use at the start of your proc macro functions
     """
     return ProcMacroInput.from_json(json_str)
-

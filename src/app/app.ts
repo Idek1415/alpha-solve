@@ -42,7 +42,18 @@ export class App implements OnDestroy {
   protected readonly helpSection = signal('Getting started');
   protected readonly collapsed = signal<Set<string>>(new Set());
   protected readonly savedPath = signal('');
-  protected readonly helpSections = ['Getting started', 'Projects and files', 'Equations and variables', 'Python functions', 'Arrange calculations', 'JSON and LLMs', 'About'];
+  protected readonly lightTheme = signal(typeof localStorage !== 'undefined' && localStorage.getItem('alpha-solve.theme') === 'light');
+  protected readonly helpSections = ['Getting started', 'Projects and files', 'Equations and variables', 'Python functions', 'Solver capabilities', 'Arrange calculations', 'JSON and LLMs', 'About'];
+  protected readonly solverCapabilities = [
+    'Algebraic equations with one or more symbolic variables',
+    'Numerical substitution and expression evaluation',
+    'Simplification of symbolic expressions',
+    'Powers, roots, fractions, logarithms, exponentials, and trigonometric functions',
+    'Definite and indefinite integrals supported by the active SymPy solver',
+    'Ordinary differential equations supported by the active SymPy solver',
+    'Custom single-function Python calculations returning named variables',
+    'Multi-pass dependencies between equations and Python calculations'
+  ];
   private draggedCell: string | null = null;
 
   private loadProjects(): Workspace[] {
@@ -168,6 +179,24 @@ export class App implements OnDestroy {
     return this.activeSystem()?.parameters.map(parameter => parameter.name) || [];
   }
 
+  protected availableVariableNames(): string[] {
+    const system = this.activeSystem();
+    if (!system) return [];
+    const names = new Set(system.parameters.map(parameter => parameter.name));
+    for (const cell of system.cells) {
+      if (cell.type === 'code') cell.outputs.forEach(output => names.add(output.name));
+      if ((cell.type === 'equation' || cell.type === 'code') && cell.context) {
+        cell.context.variables.forEach(variable => names.add(variable.name));
+      }
+    }
+    return [...names];
+  }
+
+  protected toggleTheme(): void {
+    this.lightTheme.update(value => !value);
+    localStorage.setItem('alpha-solve.theme', this.lightTheme() ? 'light' : 'dark');
+  }
+
   protected addSystem(): void {
     const system = new Project(`System ${this.workspace().systems.length + 1}`);
     system.description = 'Describe the engineering system and its assumptions.';
@@ -274,6 +303,26 @@ export class App implements OnDestroy {
     this.recordChange();
   }
 
+  protected variableNameLatex(name: string): string {
+    const separator = name.indexOf('_');
+    const base = separator < 0 ? name : name.slice(0, separator);
+    const greek = new Set(['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta', 'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi', 'omicron', 'pi', 'rho', 'sigma', 'tau', 'upsilon', 'phi', 'chi', 'psi', 'omega']);
+    const displayBase = greek.has(base) ? `\\${base}` : base;
+    if (separator < 0) return displayBase;
+    return `${displayBase}_{${name.slice(separator + 1)}}`;
+  }
+
+  protected parameterNameChanged(parameter: EngineeringParameter, latex: string): void {
+    const normalized = latex
+      .replace(/\\operatorname\{([^{}]+)\}/g, '$1')
+      .replace(/_\{([^{}]*)\}/g, '_$1')
+      .replace(/[{}\\\s]/g, '')
+      .replace(/[^A-Za-z0-9_]/g, '');
+    if (!normalized || !/^[A-Za-z]/.test(normalized)) return;
+    parameter.name = normalized;
+    this.parameterChanged();
+  }
+
   protected metadataChanged(): void {
     const system = this.activeSystem();
     if (system) system.updatedAt = new Date();
@@ -319,7 +368,7 @@ export class App implements OnDestroy {
     try {
       await system.updateContext(firstExecutable.id, this.pythonExecutor);
       this.recordChange();
-      this.statusMessage.set(`Completed ${system.name}`);
+      this.statusMessage.set(`Completed ${system.name} in ${system.lastSolvePasses} dependency pass${system.lastSolvePasses === 1 ? '' : 'es'}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.errorMessage.set(message);
@@ -342,7 +391,7 @@ export class App implements OnDestroy {
     try {
       await system.updateContext(cell.id, this.pythonExecutor);
       this.recordChange();
-      this.statusMessage.set('Run complete');
+      this.statusMessage.set(`Run complete · ${system.lastSolvePasses} dependency pass${system.lastSolvePasses === 1 ? '' : 'es'}`);
     } finally {
       this.isRunning.set(false);
       this.touch(false);
@@ -390,6 +439,32 @@ export class App implements OnDestroy {
     const system = this.activeSystem();
     if (!system) return;
     this.downloadJson(`${this.safeFileName(system.name)}.system.json`, system.toString());
+  }
+
+  protected exportLlmSystem(): void {
+    const system = this.activeSystem();
+    if (!system) return;
+    const payload = {
+      format: 'alpha-solve/llm-analysis',
+      version: 1,
+      purpose: 'Self-describing engineering model for analysis by a large language model.',
+      instructions: [
+        'Treat parameters as authoritative user inputs; preserve their units.',
+        'Cells are calculations. Equations store LaTeX in latex; Python cells return named outputs.',
+        'Variable identifiers use underscores for subscripts: x_0 is displayed as x subscript 0.',
+        'Calculation order is an initial evaluation order, not a one-way dependency rule. Re-evaluate dependencies until values stabilize.',
+        'Check dimensional consistency before trusting numerical conclusions. Clearly identify assumptions, unresolved symbols, and unsupported operations.'
+      ],
+      solverCapabilities: this.solverCapabilities,
+      organization: {
+        parameters: 'Named input values with descriptions and units.',
+        cells: 'Ordered equation, Python function, note, or folder records.',
+        context: 'Last converged set of named variables available across calculations.',
+        solutions: 'Human-readable LaTeX results from the last run.'
+      },
+      system: system.toJSON()
+    };
+    this.downloadJson(`${this.safeFileName(system.name)}.llm.json`, JSON.stringify(payload, null, 2));
   }
 
   protected importSystem(): void {
@@ -455,7 +530,7 @@ export class App implements OnDestroy {
   }
 
   protected cellLabel(cell: Cell): string {
-    if (cell.type === 'equation') return 'Equation';
+    if (cell.type === 'equation') return cell.title || 'Equation';
     if (cell.type === 'code') return cell.title || 'Python function';
     if (cell.type === 'note') return 'Note';
     return cell.name || 'Folder';
@@ -484,7 +559,7 @@ export class App implements OnDestroy {
       .map(variable => ({
         name: variable.name,
         value: variable.values.join(', '),
-        unit: outputUnits.get(variable.name) || '',
+        unit: variable.unit || outputUnits.get(variable.name) || '',
         type: variable.type
       }));
   }

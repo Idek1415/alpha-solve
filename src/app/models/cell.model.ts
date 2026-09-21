@@ -16,6 +16,7 @@ export interface BaseCell {
  */
 export interface EquationCell extends BaseCell {
   type: 'equation';
+  title: string;
   latex: string;
   context?: Context;
   solutions?: string[];
@@ -109,6 +110,7 @@ export class CellSerializer {
       case 'equation':
         return {
           ...base,
+          title: cell.title,
           latex: cell.latex,
           context: cell.context ? serializeContext(cell.context) : undefined,
           solutions: cell.solutions,
@@ -154,6 +156,7 @@ export class CellSerializer {
         return {
           ...base,
           type: 'equation',
+          title: data.title || 'Equation',
           latex: data.latex || '',
           context: data.context ? deserializeContext(data.context) : undefined,
           solutions: data.solutions,
@@ -199,6 +202,7 @@ export class CellSerializer {
     return {
       id: crypto.randomUUID(),
       type: 'equation',
+      title: 'Equation',
       latex,
       context: createContext(),
       solutions: [],

@@ -1,4 +1,5 @@
 import { Context, Variable } from './context.model';
+import { normalizeValueToSI } from './unit-system';
 
 export type ParameterKind = 'input' | 'computed';
 export type ParameterValueType = 'numerical' | 'analytical';
@@ -34,11 +35,9 @@ export function createEngineeringParameter(
 
 export function parametersToContext(parameters: EngineeringParameter[]): Context {
   return {
-    variables: parameters.map(parameter => new Variable(
-      parameter.name,
-      parameter.valueType,
-      [parameter.value]
-    ))
+    variables: parameters.map(parameter => {
+      const normalized = normalizeValueToSI(parameter.value, parameter.unit);
+      return new Variable(parameter.name, parameter.valueType, [normalized.value], normalized.unit);
+    })
   };
 }
-

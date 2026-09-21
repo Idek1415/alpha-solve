@@ -10,11 +10,13 @@ export class Variable {
   name: string;
   type: VariableType;
   values: string[];
+  unit: string;
 
-  constructor(name: string, type: VariableType, values: string[]) {
+  constructor(name: string, type: VariableType, values: string[], unit = '') {
     this.name = name;
     this.type = type;
     this.values = values;
+    this.unit = unit;
   }
 
   /**
@@ -24,7 +26,8 @@ export class Variable {
     return {
       name: this.name,
       type: this.type,
-      values: this.values
+      values: this.values,
+      unit: this.unit
     };
   }
 
@@ -32,21 +35,21 @@ export class Variable {
    * Create a variable from JSON data
    */
   static fromJSON(data: any): Variable {
-    return new Variable(data.name, data.type, data.values);
+    return new Variable(data.name, data.type, data.values, data.unit || '');
   }
 
   /**
    * Create a numerical variable
    */
-  static createNumerical(name: string, values: string[]): Variable {
-    return new Variable(name, 'numerical', values);
+  static createNumerical(name: string, values: string[], unit = ''): Variable {
+    return new Variable(name, 'numerical', values, unit);
   }
 
   /**
    * Create an analytical variable
    */
-  static createAnalytical(name: string, values: string[]): Variable {
-    return new Variable(name, 'analytical', values);
+  static createAnalytical(name: string, values: string[], unit = ''): Variable {
+    return new Variable(name, 'analytical', values, unit);
   }
 }
 
@@ -102,4 +105,3 @@ export function createCellFunctionInput(cell: any, context: Context): CellFuncti
     dropdownSelections: (cell as any).dropdownSelections
   };
 }
-

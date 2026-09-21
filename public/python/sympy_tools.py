@@ -39,6 +39,10 @@ def from_latex(latex_str: str):
     latex_str = re.sub(r'\\operatorname\{([A-Za-z][A-Za-z0-9_]*)\}', r'\1', latex_str)
     # Convert LaTeX to Python-like expression
     expr_str = _latex_to_sympy_str(latex_str)
+    # Subscripted engineering identifiers are single symbols, not products.
+    # Examples: x_0, sigma_max, omega_n.
+    for name in re.findall(r'\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+\b', expr_str):
+        local_dict[name] = Symbol(name)
 
     # Check if it's an equation (contains =)
     if '=' in expr_str:
@@ -57,7 +61,7 @@ def _handle_derivatives(latex: str) -> str:
     """
     # Match variable names followed by one or more primes
     # Pattern: variable name (letters/numbers) followed by one or more '
-    pattern = r"([a-zA-Z][a-zA-Z0-9]*)('+)"
+    pattern = r"([a-zA-Z][a-zA-Z0-9_]*)(\'+)"
 
     def replace_prime(match):
         var_name = match.group(1)
@@ -136,26 +140,17 @@ def _latex_to_sympy_str(latex: str) -> str:
     for letter in greek_letters:
         latex = latex.replace(f'\\{letter}', letter)
 
-    # Add implicit multiplication between variables/numbers and Greek letters
-    # e.g., falpha -> f*alpha, 2beta -> 2*beta
-    for letter in greek_letters:
-        latex = re.sub(rf'([a-zA-Z0-9_])({letter})', rf'\1*\2', latex)
-
-    # Replace square roots BEFORE fractions: \sqrt{x} -> sqrt(x)
-    # This way \sqrt{2} becomes sqrt(2) before we process fractions
-    latex = re.sub(r'\\sqrt\{([^{}]*)\}', r'sqrt(\1)', latex)
-
-    # Add implicit multiplication between variables/numbers and sqrt
-    # e.g., asqrt(2) -> a*sqrt(2), 2sqrt(3) -> 2*sqrt(3)
-    latex = re.sub(r'([a-zA-Z0-9_])sqrt\(', r'\1*sqrt(', latex)
-
-    # Replace fractions: \frac{a}{b} -> (a)/(b)
-    # Now that subscripts, Greek letters, and square roots are simplified, this will work
+    # Replace fractions from the inside out. Doing this before roots supports
+    # common nested input such as \sqrt{\frac{k}{m}}.
     # Limit iterations to prevent infinite loops
     for _ in range(100):
         if r'\frac' not in latex:
             break
         latex = re.sub(r'\\frac\{([^{}]*)\}\{([^{}]*)\}', r'((\1)/(\2))', latex)
+
+    # Replace square roots after their nested fractions have been flattened.
+    latex = re.sub(r'\\sqrt\{([^{}]*)\}', r'sqrt(\1)', latex)
+    latex = re.sub(r'([a-zA-Z0-9_])sqrt\(', r'\1*sqrt(', latex)
 
     # Replace exponents: ^ -> **
     latex = latex.replace('^', '**')

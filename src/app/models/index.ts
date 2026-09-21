@@ -12,4 +12,5 @@ export * from './proc-macro-result.model';
 export * from './dropdown.model';
 export * from './packet.model';
 export * from './engineering-parameter.model';
+export * from './unit-system';
 export * from './workspace.model';

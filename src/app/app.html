@@ -1,7 +1,8 @@
-<div class="application-shell">
+<div class="application-shell" [class.light-theme]="lightTheme()">
   <header class="titlebar">
     <div class="brand-mark">A</div>
     <div class="app-title">Alpha Solve App <span>built on alpha solve by Jack Neeleman (icanthink42)</span></div>
+    <button class="theme-button" (click)="toggleTheme()" [title]="lightTheme() ? 'Use dark mode' : 'Use light mode'">{{ lightTheme() ? '☾ Dark' : '☀ Light' }}</button>
     <button class="help-button" (click)="showHelp()">Help</button>
   </header>
 
@@ -26,6 +27,7 @@
     <button class="icon-button" (click)="redo()" [disabled]="!canRedo()" title="Redo">↷</button>
     <button class="tool-button" (click)="importSystem()"><span class="tool-icon">⇩</span><span>Import system</span></button>
     <button class="tool-button" (click)="exportSystem()"><span class="tool-icon">⇧</span><span>Export JSON</span></button>
+    <button class="tool-button" (click)="exportLlmSystem()"><span class="tool-icon">◇</span><span>LLM JSON</span></button>
   </div>
 
   <div class="workspace-grid">
@@ -40,7 +42,7 @@
         </div>
       }
       <div class="workspace-name-row">
-        <span class="tree-icon">◫</span>
+        <span class="tree-icon">▣</span>
         <input
           class="workspace-name"
           [ngModel]="workspace().name"
@@ -55,7 +57,7 @@
           <div class="system-tree" [class.active-system]="activeSystem()?.id === system.id">
             <button class="system-node" (click)="selectSystem(system.id)">
               <span class="disclosure" (click)="toggleCollapsed(system.id); $event.stopPropagation()">{{ collapsed().has(system.id) ? '›' : '⌄' }}</span>
-              <span class="tree-icon system-icon">∿</span>
+              <span class="tree-icon system-icon">▱</span>
               <span class="tree-label">{{ system.name }}</span>
               <span class="tree-count">{{ system.cells.length }}</span>
               <span class="tree-delete" (click)="deleteSystem(system, $event)">×</span>
@@ -86,7 +88,7 @@
                 <button class="group-label group-toggle" (click)="toggleCollapsed(system.id + '-parameters')" [attr.aria-expanded]="collapsed().has(system.id + '-parameters')"><span>{{ collapsed().has(system.id + '-parameters') ? '⌄' : '›' }}</span><span class="tree-icon">𝑥</span>Parameters <span class="tree-count">{{ system.parameters.length }}</span></button>
                 @if (collapsed().has(system.id + '-parameters')) {
                   @for (parameter of system.parameters; track parameter.id) {
-                    <div class="cell-node">{{ parameter.name }} = {{ parameter.value }} {{ parameter.unit }}</div>
+                    <div class="cell-node"><app-latex-renderer [latex]="variableNameLatex(parameter.name)" /> = {{ parameter.value }} {{ parameter.unit }}</div>
                   }
                 }
               </div>
@@ -154,8 +156,14 @@
                       (ngModelChange)="asCode(cell).title = $event; metadataChanged()"
                       aria-label="Code cell title"
                     />
+                  } @else if (cell.type === 'equation') {
+                    <input
+                      [ngModel]="asEquation(cell).title"
+                      (ngModelChange)="asEquation(cell).title = $event; metadataChanged()"
+                      aria-label="Equation title"
+                    />
                   } @else {
-                    <span>{{ cell.type === 'equation' ? 'Equation' : cell.type === 'note' ? 'Engineering note' : 'Folder' }}</span>
+                    <span>{{ cell.type === 'note' ? 'Engineering note' : 'Folder' }}</span>
                   }
                 </div>
                 <div class="card-actions">
@@ -174,18 +182,10 @@
                   <div class="cell-input-pane">
                     <label>Model equation</label>
                     <app-mathquill-input
-                      #equationEditor
-                      [variableNames]="parameterNames()"
+                      [variableNames]="availableVariableNames()"
                       [latex]="asEquation(cell).latex"
                       (latexChange)="equationChanged(asEquation(cell), $event)"
                     />
-                    <div class="variable-picker">
-                      <label>Insert input variable</label>
-                      @for (parameter of system.parameters; track parameter.id) {
-                        <button (mousedown)="$event.preventDefault()" (click)="equationEditor.insertVariable(parameter.name)" [title]="parameter.description + ': ' + parameter.value + ' ' + parameter.unit">{{ parameter.name }}</button>
-                      }
-                      <small>Use × between variables. Inputs are substituted when you run.</small>
-                    </div>
                   </div>
                   <div class="cell-result-pane">
                     <label>Result</label>
@@ -225,7 +225,7 @@
                       <div class="output-list">
                         @for (output of asCode(cell).outputs; track output.name) {
                           <div class="output-row">
-                            <code>{{ output.name }}</code>
+                            <app-latex-renderer class="variable-math-name" [latex]="variableNameLatex(output.name)" />
                             <span class="output-value">{{ output.value || '—' }}</span>
                             <input
                               class="unit-input"
@@ -286,7 +286,13 @@
           </div>
           @for (parameter of system.parameters; track parameter.id) {
             <div class="parameter-row">
-              <input class="variable-name" [(ngModel)]="parameter.name" (ngModelChange)="parameterChanged()" aria-label="Variable name" />
+              <app-mathquill-input
+                class="parameter-name-editor"
+                [compact]="true"
+                [ariaLabel]="'Variable name ' + parameter.name"
+                [latex]="variableNameLatex(parameter.name)"
+                (latexChange)="parameterNameChanged(parameter, $event)"
+              />
               <input [(ngModel)]="parameter.description" (ngModelChange)="parameterChanged()" aria-label="Description" />
               <input class="parameter-value" [(ngModel)]="parameter.value" (ngModelChange)="parameterChanged()" aria-label="Value" />
               <input class="parameter-unit" [(ngModel)]="parameter.unit" (ngModelChange)="parameterChanged()" aria-label="Unit" />
@@ -302,9 +308,10 @@
         </div>
         @if (computedVariables().length) {
           <div class="computed-list">
+            <div class="computed-table-head"><span>Variable</span><span>Value</span><span>Unit</span></div>
             @for (variable of computedVariables(); track variable.name) {
               <div class="computed-row">
-                <code>{{ variable.name }}</code>
+                <app-latex-renderer class="variable-math-name" [latex]="variableNameLatex(variable.name)" />
                 <span>{{ variable.value }}</span>
                 <span>{{ variable.unit }}</span>
               </div>
@@ -334,13 +341,14 @@
           <nav aria-label="Help topics">@for (section of helpSections; track section) {<button [class.current-project]="helpSection() === section" (click)="helpSection.set(section)">{{ section }}</button>}</nav>
           <article><h3>{{ helpSection() }}</h3>
           @switch (helpSection()) {
-            @case ('Getting started') {<p>Create a project with New, name its system, and enter inputs in the right panel. Add equation, Python function, or note cards below the calculations.</p><p>Click Run to calculate from top to bottom. Results appear alongside each card and in Computed. After changing inputs or order, run again.</p>}
+            @case ('Getting started') {<p>Create a project with New, name its system, and enter inputs in the right panel. Add equation, Python function, or note cards below the calculations.</p><p>Click Run to solve the whole dependency system. Alpha Solve repeats the calculations until the shared variables stop changing, so a calculation can use a value produced by a later card. Results appear alongside each card and in Computed.</p>}
             @case ('Projects and files') {<p>New keeps your other projects in the explorer. Click a project name to switch; use its arrow to collapse or expand its systems. Each project can contain several systems.</p><p>Save writes the active project to an .asolve file. Open starts in Documents → Alpha Solve App and adds the chosen project to your explorer. A persistent notification displays the full saved path.</p><p>Autosave restores open projects on this computer. Save files separately for backups or sharing.</p>}
-            @case ('Equations and variables') {<p>Define named inputs on the right, then use the Insert input variable buttons under an equation to insert one at the cursor. Hover a variable button to see its value and unit.</p><p>Example: U = 0.5 × k × x_0². Type * for multiplication, / for fractions, ^ for powers, and _ for subscripts. Use arrow keys to leave a subscript or fraction.</p><p>Inputs and earlier results are available to later calculations. Use explicit multiplication between names. Units are labels in this release; they do not perform conversions or dimensional checks.</p>}
-            @case ('Python functions') {<p>Write exactly one Python function. Its arguments match input names or earlier calculated variables. Return a dictionary whose keys name the output variables.</p><pre>def calculate(m, k):
+            @case ('Equations and variables') {<p>Define named inputs on the right and type those same names directly in equations. Parameter names use a math editor too: type an underscore to create a subscript, such as x_0.</p><p>Example: U = 0.5 × k × x_0². Type * for multiplication, / for fractions, ^ for powers, and _ for subscripts. Use arrow keys to leave a subscript or fraction.</p><p>Inputs and calculated values are shared across all calculations. Alpha Solve repeats dependency passes until no values change. Use explicit multiplication between names. Units are labels in this release; they do not perform conversions or dimensional checks.</p>}
+            @case ('Python functions') {<p>Write exactly one Python function. Its arguments match input names or calculated variables from anywhere in the system. Return a dictionary whose keys name the output variables.</p><pre>def calculate(m, k):
     return {{ '{' }}"frequency": (k / m) ** 0.5{{ '}' }}</pre><p>Imports belong inside your function. Print output appears under Console output. Only run code from sources you trust. Runtime packages currently require an internet connection.</p>}
-            @case ('Arrange calculations') {<p>Drag the dotted handle at the left of a card onto another card to change calculation order. The arrow buttons remain available for keyboard users.</p><p>The arrow beside the handle collapses or expands a card. Reordering changes which values are available downstream, so run again afterward. Undo and Redo reverse edits within the active project.</p>}
-            @case ('JSON and LLMs') {<p>Export JSON saves the active system, including equations, Python source, parameters, units, notes, and stored results. Choose its location in the Save dialog; the full path remains visible afterward.</p><p>Give that JSON and docs/system.schema.json to your LLM. Import system reads a compatible JSON document and adds it to the current project. Imported code is not automatically executed. Review it before running.</p>}
+            @case ('Solver capabilities') {<p>The active analytical solver currently supports:</p><ul>@for (capability of solverCapabilities; track capability) {<li>{{ capability }}</li>}</ul><p>Input values using recognized SI units and prefixes are normalized to coherent SI before evaluation (for example, GPa to Pa). Derived equation units are inferred for direct forms such as F = m × a. More complex dimensional models should still be reviewed by the engineer.</p>}
+            @case ('Arrange calculations') {<p>Drag the dotted handle at the left of a card onto another card to organize the calculation sequence. The arrow buttons remain available for keyboard users.</p><p>The arrow beside the handle collapses or expands a card. Dependency passes allow values to flow in either direction, while order still controls which calculation runs first. Undo and Redo reverse edits within the active project.</p>}
+            @case ('JSON and LLMs') {<p>Export JSON creates the portable system file used for re-import. LLM JSON creates a self-describing analysis package containing the system, its organization, notation rules, dependency behavior, safety guidance, and the current solver capability list.</p><p>Imported code is not automatically executed. Review it before running. For reliable analysis, ask the LLM to verify assumptions and dimensional consistency rather than treating stored results as authoritative.</p><h4>Current solver capabilities</h4><ul>@for (capability of solverCapabilities; track capability) {<li>{{ capability }}</li>}</ul>}
             @case ('About') {<p>Alpha Solve App</p><p>built on alpha solve by Jack Neeleman (icanthink42)</p><p>This desktop interface uses the existing Alpha Solve analytical solver. The original work provides the foundation for its mathematical capabilities.</p>}
           }
           </article>

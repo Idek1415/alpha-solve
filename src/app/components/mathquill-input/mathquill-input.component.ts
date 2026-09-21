@@ -20,7 +20,7 @@ declare const MathQuill: any;
   imports: [],
   template: `
     <div class="mathquill-container">
-      <div #mathquillField class="mathquill-input"></div>
+      <div #mathquillField class="mathquill-input" [attr.aria-label]="ariaLabel"></div>
     </div>
   `,
   styleUrl: './mathquill-input.component.css',
@@ -31,11 +31,14 @@ declare const MathQuill: any;
       multi: true,
     },
   ],
+  host: { '[class.compact]': 'compact' },
 })
 export class MathQuillInputComponent implements AfterViewInit, OnDestroy, OnChanges, ControlValueAccessor {
   @ViewChild('mathquillField', { static: false }) mathquillField!: ElementRef;
   @Input() latex: string = '';
   @Input() variableNames: string[] = [];
+  @Input() compact = false;
+  @Input() ariaLabel = 'Equation editor';
   @Output() latexChange = new EventEmitter<string>();
   @Output() keydownEvent = new EventEmitter<KeyboardEvent>();
   @Output() navigateUp = new EventEmitter<void>();
@@ -224,14 +227,6 @@ export class MathQuillInputComponent implements AfterViewInit, OnDestroy, OnChan
     const names = this.variableNames.filter(name => /^[A-Za-z]{2,}$/.test(name));
     return [...new Set(['sin', 'cos', 'tan', 'log', 'ln', 'exp', 'min', 'max', 'int', ...names])].join(' ');
   }
-  insertVariable(name: string): void {
-    if (!this.mathField || !/^[A-Za-z][A-Za-z0-9_]*$/.test(name)) return;
-    const [base, ...subscript] = name.split('_');
-    this.mathField.focus();
-    this.mathField.write(subscript.length ? `${base}_{${subscript.join('_')}}` : base);
-    this.mathField.keystroke('Right');
-  }
-
   focus(): void {
     if (this.mathField) {
       this.mathField.focus();

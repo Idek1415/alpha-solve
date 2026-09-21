@@ -880,9 +880,11 @@ button {
   font-size: 11px;
 }
 
-.parameter-row .variable-name {
+.parameter-row .parameter-name-editor {
   color: #8fc3df;
   font-family: Consolas, monospace;
+  min-width: 0;
+  border-right: 1px solid #30363c;
 }
 
 .parameter-row .parameter-value {
@@ -921,7 +923,8 @@ button {
   border-bottom: 1px solid #30363d;
 }
 
-.computed-row {
+.computed-row,
+.computed-table-head {
   min-height: 31px;
   display: grid;
   grid-template-columns: 82px 1fr 54px;
@@ -930,7 +933,20 @@ button {
   border-bottom: 1px solid #2b3137;
 }
 
-.computed-row code {
+.computed-table-head {
+  min-height: 27px;
+  color: #75818b;
+  background: #20262b;
+  font-size: 9px;
+}
+
+.computed-table-head span {
+  padding: 7px;
+  border-right: 1px solid #343a40;
+}
+
+.computed-row .variable-math-name,
+.output-row .variable-math-name {
   color: #b79bd6;
 }
 
@@ -1073,10 +1089,11 @@ button {
   }
 }
 
-.help-button { margin-left: auto; padding: 6px 16px; }
+.theme-button { margin-left: auto; padding: 6px 11px; }
+.help-button { padding: 6px 16px; }
 .group-toggle { width: 100%; border: 0; text-align: left; background: transparent; cursor: pointer; }
 .group-toggle:hover { background: #2b3742; }
-.help-button, .project-tab button, .variable-picker button, .help-dialog button,
+.theme-button, .help-button, .project-tab button, .help-dialog button,
 .card-header > button, .save-notice button {
   border: 1px solid #46525f; border-radius: 4px; color: #e3edf5; background: #28323c; cursor: pointer;
 }
@@ -1087,9 +1104,6 @@ button {
 .drag-handle { cursor: grab !important; font-size: 19px; padding: 0 5px; }
 .card-header { gap: 7px; }
 .card-header > button { min-width: 24px; min-height: 24px; }
-.variable-picker { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
-.variable-picker button { padding: 4px 7px; }
-.variable-picker small { width: 100%; color: #b2bec9; line-height: 1.5; }
 .save-notice { position: fixed; bottom: 38px; right: 20px; max-width: min(680px, 90vw); padding: 16px;
   display: flex; align-items: center; gap: 12px; background: #263d36; border: 1px solid #6ba58a; border-radius: 6px; z-index: 20; }
 .save-notice span { overflow-wrap: anywhere; user-select: text; }
@@ -1104,3 +1118,50 @@ button {
 .help-layout article { padding: 12px 28px 24px; font-size: 15px; line-height: 1.7; }
 .help-layout pre { background: #10171e; padding: 14px; overflow: auto; }
 .output-value, .computed-row span { overflow-wrap: anywhere; }
+
+/* Reference-inspired light engineering workspace. */
+.application-shell.light-theme { color: #20262c; background: #e7e9eb; }
+.light-theme .titlebar { color: #18232d; background: #eef1f3; border-color: #aeb5bb; }
+.light-theme .app-title span { color: #5d6973; }
+.light-theme .toolbar { background: #f6f7f8; border-color: #aeb5bb; box-shadow: none; }
+.light-theme .tool-button, .light-theme .icon-button { color: #27343e; }
+.light-theme .tool-button:hover:not(:disabled), .light-theme .icon-button:hover:not(:disabled) { background: #dce5ec; border-color: #9cabb7; }
+.light-theme .run-button { color: #fff; background: #397db1; border-color: #2b6794; }
+.light-theme .theme-button, .light-theme .help-button, .light-theme .project-tab button,
+.light-theme .project-panel-footer button, .light-theme .add-parameter-button,
+.light-theme .add-cell-row button, .light-theme .card-header > button {
+  color: #26343e;
+  background: #f4f6f7;
+  border-color: #aeb8c0;
+}
+.light-theme .project-tab .current-project { color: #132b3b !important; background: #c8deed !important; }
+.light-theme .add-cell-row button:hover, .light-theme .project-panel-footer button:hover,
+.light-theme .add-parameter-button:hover { color: #14232e; background: #e0eaf1; }
+.light-theme .workspace-grid { background: #dfe3e6; }
+.light-theme .panel, .light-theme .calculation-panel { color: #20262c; background: #f4f5f5; }
+.light-theme .project-panel, .light-theme .calculation-panel { border-color: #aeb4b9; box-shadow: none; }
+.light-theme .panel-heading, .light-theme .parameter-section-header { color: #20262c; background: #e5e8ea; border-color: #b9bec2; }
+.light-theme .workspace-name, .light-theme .system-title-input, .light-theme .system-description-input,
+.light-theme .card-title input, .light-theme .parameter-row input { color: #20262c; }
+.light-theme .system-node:hover, .light-theme .cell-node:hover, .light-theme .cell-node.selected { background: #d9e5ed; }
+.light-theme .system-tree.active-system > .system-node { color: #111; background: #dbe2e7; }
+.light-theme .group-label, .light-theme .cell-node { color: #4c5963; }
+.light-theme .calculation-header { background: #f7f8f8; border-color: #b8bec3; }
+.light-theme .calculation-card { background: #fff; border-color: #b8c0c6; box-shadow: 0 1px 3px #0002; }
+.light-theme .card-header { color: #17212a; background: #dceaf5; border-color: #b2c6d5; }
+.light-theme .card-title { color: #17212a; }
+.light-theme .card-number { color: #324654; background: #c7dce9; }
+.light-theme .cell-input-pane app-mathquill-input, .light-theme .code-editor, .light-theme .note-editor { color: #17212a; background: #fff; border-color: #b8c0c6; }
+.light-theme .cell-result-pane, .light-theme .code-result-pane { color: #20262c; background: #f5f7f8; border-color: #c2c7cb; }
+.light-theme .math-result, .light-theme .output-value, .light-theme .execution-time,
+.light-theme .empty-result { color: #34434e; }
+.light-theme .variable-math-name { color: #704f8d; }
+.light-theme .unit-input { color: #34434e; background: #fff; border-color: #aeb8c0; }
+.light-theme .parameter-table-head, .light-theme .computed-table-head { color: #394751; background: #e4e7e9; }
+.light-theme .parameter-row, .light-theme .computed-row, .light-theme .computed-list { border-color: #c8cdd1; }
+.light-theme .computed-row span:nth-child(2) { color: #20262c; }
+.light-theme .statusbar { color: #35424c; background: #e9ecee; border-color: #b8bec3; }
+.light-theme .help-dialog { color: #20262c; background: #f7f8f8; border-color: #9faab2; }
+.light-theme .help-dialog header, .light-theme .help-dialog nav { background: #e8ecef; border-color: #b9c0c5; }
+.light-theme ::ng-deep .mathquill-input { color: #17212a; }
+.light-theme ::ng-deep .mathquill-input:focus-within { background: #edf5fa; }

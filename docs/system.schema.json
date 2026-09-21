@@ -60,7 +60,8 @@
             "properties": {
               "name": { "type": "string" },
               "type": { "enum": ["numerical", "analytical"] },
-              "values": { "type": "array", "items": { "type": "string" } }
+              "values": { "type": "array", "items": { "type": "string" } },
+              "unit": { "type": "string" }
             },
             "additionalProperties": false
           }
@@ -76,6 +77,7 @@
           "required": ["type", "latex"],
           "properties": {
             "type": { "const": "equation" },
+            "title": { "type": "string" },
             "latex": { "type": "string" },
             "context": { "$ref": "#/$defs/context" },
             "solutions": { "type": "array", "items": { "type": "string" } },
@@ -155,4 +157,3 @@
     }
   }
 }
-

@@ -1,6 +1,6 @@
 import { Cell, SerializableCell, CellSerializer, EquationCell, CodeCell } from './cell.model';
 import { PythonExecutorService } from '../services/python-executor.service';
-import { Context, createCellFunctionInput } from './context.model';
+import { Context, Variable, createCellFunctionInput } from './context.model';
 import { MetaFunctionResult } from './meta-function-result.model';
 import { CellFunctionResult } from './cell-function-result.model';
 import { createProcMacroInput } from './proc-macro-input.model';
@@ -9,6 +9,7 @@ import {
   EngineeringParameter,
   parametersToContext
 } from './engineering-parameter.model';
+import { inferEquationUnit } from './unit-system';
 
 export const SYSTEM_FORMAT = 'alpha-solve/system';
 export const SYSTEM_VERSION = 1;
@@ -24,6 +25,7 @@ export class Project {
   parameters: EngineeringParameter[];
   createdAt: Date;
   updatedAt: Date;
+  lastSolvePasses = 0;
 
   constructor(
     name: string = 'Untitled Project',
@@ -155,92 +157,81 @@ export class Project {
   }
 
   /**
-   * Update context for a cell and propagate to subsequent cells
+   * Re-evaluate the system until values stop changing. A bounded fixed-point
+   * pass lets a cell consume a value produced by a later cell without making
+   * cycles capable of running forever.
    */
   async updateContext(cellId: string, pythonExecutor: PythonExecutorService): Promise<void> {
-    // Find the cell and its parent array
-    const result = this.findCellWithParent(this.cells, cellId);
-    if (!result) {
-      // Cell not found - it may have been deleted, so just return silently
-      return;
+    const executable = this.flattenExecutableCells(this.cells);
+    const startIndex = executable.findIndex(cell => cell.id === cellId);
+    if (startIndex < 0) return;
+
+    const ordered = [...executable.slice(startIndex), ...executable.slice(0, startIndex)];
+    const inputs = parametersToContext(this.parameters);
+    const inputNames = new Set(inputs.variables.map(variable => variable.name));
+    let known = inputs;
+    let previousSignature = this.contextSignature(known);
+    const seen = new Set([previousSignature]);
+    const maxPasses = Math.min(20, Math.max(3, executable.length * 2));
+    this.lastSolvePasses = 0;
+
+    for (let pass = 1; pass <= maxPasses; pass++) {
+      let passContext = known;
+      for (const cell of ordered) {
+        const result = cell.type === 'equation'
+          ? await this.updateCellContext(cell, passContext, pythonExecutor)
+          : await this.updateCodeCellContext(cell, passContext, pythonExecutor);
+        passContext = this.mergeContexts(passContext, result, inputs, inputNames);
+      }
+
+      known = passContext;
+      this.lastSolvePasses = pass;
+      const signature = this.contextSignature(known);
+      if (signature === previousSignature || seen.has(signature)) break;
+      seen.add(signature);
+      previousSignature = signature;
     }
 
-    const { cell, parentArray, index } = result;
-
-    // Process starting from the found cell
-    await this.propagateContext(parentArray, index, pythonExecutor);
-
+    for (const cell of executable) cell.context = this.cloneContext(known);
     this.updatedAt = new Date();
   }
 
-  /**
-   * Propagate context through cells starting at a given index
-   * When encountering folders, process both inside the folder and after it
-   */
-  private async propagateContext(
-    cells: Cell[],
-    startIndex: number,
-    pythonExecutor: PythonExecutorService
-  ): Promise<void> {
-    // Get initial context from the previous cell (if any)
-    let currentContext = this.getPreviousCellContext(cells, startIndex);
-
-    for (let i = startIndex; i < cells.length; i++) {
-      const currentCell = cells[i];
-
-      if (currentCell.type === 'equation') {
-        // Update equation cell with the current context
-        currentContext = await this.updateCellContext(currentCell, currentContext, pythonExecutor);
-      } else if (currentCell.type === 'code') {
-        currentContext = await this.updateCodeCellContext(currentCell, currentContext, pythonExecutor);
-      } else if (currentCell.type === 'folder') {
-        // Process cells inside the folder with the current context
-        await this.propagateContextWithContext(currentCell.cells, 0, currentContext, pythonExecutor);
-        // Continue processing cells after the folder with the same context (context doesn't expand out)
-      }
-      // Note cells are skipped
+  private flattenExecutableCells(cells: Cell[]): (EquationCell | CodeCell)[] {
+    const result: (EquationCell | CodeCell)[] = [];
+    for (const cell of cells) {
+      if (cell.type === 'equation' || cell.type === 'code') result.push(cell);
+      if (cell.type === 'folder') result.push(...this.flattenExecutableCells(cell.cells));
     }
+    return result;
   }
 
-  /**
-   * Propagate context through cells with a given starting context
-   */
-  private async propagateContextWithContext(
-    cells: Cell[],
-    startIndex: number,
-    context: Context,
-    pythonExecutor: PythonExecutorService
-  ): Promise<void> {
-    let currentContext = context;
-
-    for (let i = startIndex; i < cells.length; i++) {
-      const currentCell = cells[i];
-
-      if (currentCell.type === 'equation') {
-        currentContext = await this.updateCellContext(currentCell, currentContext, pythonExecutor);
-      } else if (currentCell.type === 'code') {
-        currentContext = await this.updateCodeCellContext(currentCell, currentContext, pythonExecutor);
-      } else if (currentCell.type === 'folder') {
-        await this.propagateContextWithContext(currentCell.cells, 0, currentContext, pythonExecutor);
+  private mergeContexts(current: Context, update: Context, inputs: Context, inputNames: Set<string>): Context {
+    const variables = new Map<string, Variable>();
+    for (const variable of current.variables) {
+      variables.set(variable.name, new Variable(variable.name, variable.type, [...variable.values], variable.unit));
+    }
+    for (const variable of update.variables) {
+      if (!inputNames.has(variable.name)) {
+        variables.set(variable.name, new Variable(variable.name, variable.type, [...variable.values], variable.unit));
       }
     }
+    for (const variable of inputs.variables) {
+      variables.set(variable.name, new Variable(variable.name, variable.type, [...variable.values], variable.unit));
+    }
+    return { variables: [...variables.values()] };
   }
 
-  /**
-   * Get the context from the previous cell
-   */
-  private getPreviousCellContext(cells: Cell[], currentIndex: number): Context {
-    for (let i = currentIndex - 1; i >= 0; i--) {
-      const prevCell = cells[i];
-      if (prevCell.type === 'equation' && prevCell.context) {
-        return prevCell.context;
-      }
-      if (prevCell.type === 'code' && prevCell.context) {
-        return prevCell.context;
-      }
-    }
-    // Return empty context if no previous cell
-    return parametersToContext(this.parameters);
+  private contextSignature(context: Context): string {
+    return JSON.stringify([...context.variables]
+      .map(variable => [variable.name, variable.type, [...variable.values]])
+      .sort(([left], [right]) => String(left).localeCompare(String(right))));
+  }
+
+  private cloneContext(context: Context): Context {
+    return {
+      variables: context.variables.map(variable =>
+        new Variable(variable.name, variable.type, [...variable.values], variable.unit))
+    };
   }
 
   private async updateCodeCellContext(
@@ -260,6 +251,10 @@ export class Project {
         ...output,
         unit: previousUnits.get(output.name) || output.unit || ''
       }));
+      const outputUnits = new Map(cell.outputs.map(output => [output.name, output.unit || '']));
+      for (const variable of result.context.variables) {
+        variable.unit = variable.unit || outputUnits.get(variable.name) || inputContext.variables.find(input => input.name === variable.name)?.unit || '';
+      }
       cell.stdout = result.stdout;
       cell.context = result.context;
       cell.status = 'success';
@@ -456,6 +451,10 @@ export class Project {
         // Update cell context if new context is provided
         let newContext = inputContext;
         if (cellResult.newContext) {
+          const knownUnits = new Map(inputContext.variables.map(variable => [variable.name, variable.unit || '']));
+          for (const variable of cellResult.newContext.variables) {
+            if (!variable.unit) variable.unit = inferEquationUnit(modifiedCell.latex, variable.name, knownUnits);
+          }
           cell.context = cellResult.newContext;
           newContext = cellResult.newContext;
         } else {
@@ -464,7 +463,11 @@ export class Project {
 
         // Update visible solutions if provided
         if (cellResult.visibleSolutions) {
-          cell.solutions = cellResult.visibleSolutions;
+          const isOnlyConfirmation = cellResult.visibleSolutions.length > 0 &&
+            cellResult.visibleSolutions.every(solution => /^(?:\$\$)?\s*(?:True|False)\s*(?:\$\$)?$/i.test(solution));
+          if (!isOnlyConfirmation || !cell.solutions?.length) {
+            cell.solutions = cellResult.visibleSolutions;
+          }
         }
 
         cell.updatedAt = new Date();
