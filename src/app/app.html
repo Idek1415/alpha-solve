@@ -312,7 +312,7 @@
             @for (variable of computedVariables(); track variable.name) {
               <div class="computed-row">
                 <app-latex-renderer class="variable-math-name" [latex]="variableNameLatex(variable.name)" />
-                <span>{{ variable.value }}</span>
+                <span class="computed-value" tabindex="0" [title]="variable.value" [attr.aria-label]="variable.name + ' value ' + variable.value">{{ variable.value }}</span>
                 <span>{{ variable.unit }}</span>
               </div>
             }

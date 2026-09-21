@@ -209,6 +209,10 @@ button {
   flex-direction: column;
 }
 
+.parameters-panel {
+  overflow: hidden;
+}
+
 .panel-heading {
   height: 34px;
   flex: 0 0 34px;
@@ -817,6 +821,7 @@ button {
 
 .parameter-section-header {
   height: 29px;
+  flex: 0 0 29px;
   display: flex;
   align-items: center;
   padding: 0 9px;
@@ -835,7 +840,11 @@ button {
 }
 
 .parameter-table {
-  overflow-x: auto;
+  min-height: 0;
+  max-height: min(38vh, 360px);
+  flex: 0 1 auto;
+  overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 .parameter-table-head,
@@ -911,6 +920,7 @@ button {
 
 .add-parameter-button {
   width: calc(100% - 16px);
+  flex: 0 0 26px;
   margin: 8px;
 }
 
@@ -920,14 +930,18 @@ button {
 }
 
 .computed-list {
+  min-height: 0;
+  flex: 1 1 0;
+  overflow: auto;
   border-bottom: 1px solid #30363d;
+  scrollbar-gutter: stable;
 }
 
 .computed-row,
 .computed-table-head {
   min-height: 31px;
   display: grid;
-  grid-template-columns: 82px 1fr 54px;
+  grid-template-columns: minmax(70px, 82px) minmax(0, 1fr) 54px;
   align-items: center;
   padding: 0 7px;
   border-bottom: 1px solid #2b3137;
@@ -935,6 +949,9 @@ button {
 
 .computed-table-head {
   min-height: 27px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
   color: #75818b;
   background: #20262b;
   font-size: 9px;
@@ -950,13 +967,21 @@ button {
   color: #b79bd6;
 }
 
-.computed-row span:nth-child(2) {
-  overflow: hidden;
+.computed-row .computed-value {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
   color: #e0e5e9;
-  text-overflow: ellipsis;
   white-space: nowrap;
   text-align: right;
   font-family: Consolas, monospace;
+  scrollbar-width: thin;
+  outline: none;
+}
+
+.computed-row .computed-value:focus {
+  box-shadow: 0 0 0 1px #4c829f inset;
 }
 
 .computed-row span:last-child {
