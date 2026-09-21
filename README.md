@@ -2,7 +2,7 @@
 
 built on alpha solve by Jack Neeleman (icanthink42)
 
-## Desktop usability update (0.2.0)
+## Desktop usability update (0.3.2)
 
 Open projects remain in the explorer when creating or opening another project. Cards and projects have collapse controls, and calculation handles support drag reordering. Parameter names and equations use math-aware editors with subscript support. Help provides feature topics and keyboard navigation.
 
