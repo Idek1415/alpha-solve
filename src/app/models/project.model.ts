@@ -218,7 +218,13 @@ export class Project {
     }
     for (const variable of update.variables) {
       if (!inputNames.has(variable.name)) {
-        variables.set(variable.name, new Variable(variable.name, variable.type, [...variable.values], variable.unit));
+        const existingUnit = variables.get(variable.name)?.unit || '';
+        variables.set(variable.name, new Variable(
+          variable.name,
+          variable.type,
+          [...variable.values],
+          variable.unit || existingUnit
+        ));
       }
     }
     for (const variable of inputs.variables) {
@@ -229,7 +235,7 @@ export class Project {
 
   private contextSignature(context: Context): string {
     return JSON.stringify([...context.variables]
-      .map(variable => [variable.name, variable.type, [...variable.values]])
+      .map(variable => [variable.name, variable.type, [...variable.values], variable.unit])
       .sort(([left], [right]) => String(left).localeCompare(String(right))));
   }
 
@@ -459,7 +465,10 @@ export class Project {
         if (cellResult.newContext) {
           const knownUnits = new Map(inputContext.variables.map(variable => [variable.name, variable.unit || '']));
           for (const variable of cellResult.newContext.variables) {
-            if (!variable.unit) variable.unit = inferEquationUnit(modifiedCell.latex, variable.name, knownUnits);
+            if (!variable.unit) {
+              variable.unit = knownUnits.get(variable.name) ||
+                inferEquationUnit(modifiedCell.latex, variable.name, knownUnits);
+            }
           }
           cell.context = cellResult.newContext;
           newContext = cellResult.newContext;

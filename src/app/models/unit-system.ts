@@ -100,9 +100,14 @@ export function sameDimensions(left: string, right: string): boolean {
 function normalizeLatexExpression(latex: string): string {
   let value = latex
     .replace(/\\operatorname\{([^{}]+)\}/g, '$1')
+    .replace(/\\mathrm\{([^{}]+)\}/g, '$1')
     .replace(/_\{([^{}]+)\}/g, '_$1')
+    .replace(/\\(alpha|beta|gamma|delta|epsilon|varepsilon|zeta|eta|theta|vartheta|iota|kappa|lambda|mu|nu|xi|rho|sigma|tau|upsilon|phi|varphi|chi|psi|omega)(?![A-Za-z])/g, '$1')
+    .replace(/\\pi(?![A-Za-z])/g, 'pi')
     .replace(/\\left|\\right/g, '')
     .replace(/\\cdot|\\times/g, '*')
+    .replace(/\[|\]/g, match => match === '[' ? '(' : ')')
+    .replace(/\\[,;:!]/g, '')
     .replace(/\s+/g, '');
   for (let index = 0; index < 20 && value.includes('\\frac'); index++) {
     const next = value.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '(($1)/($2))');
@@ -113,34 +118,54 @@ function normalizeLatexExpression(latex: string): string {
   return value;
 }
 
+interface DimensionExpression {
+  /** Known part of the dimensions plus targetPower times the unknown target dimensions. */
+  dimensions: Dimensions;
+  targetPower: number;
+}
+
 class DimensionExpressionParser {
   private index = 0;
-  constructor(private readonly tokens: string[], private readonly units: Map<string, UnitValue>) {}
+  readonly constraints: Array<[DimensionExpression, DimensionExpression]> = [];
 
-  parse(): UnitValue | null { return this.sum(); }
+  constructor(
+    private readonly tokens: string[],
+    private readonly units: Map<string, UnitValue>,
+    private readonly targetName: string
+  ) {}
 
-  private sum(): UnitValue | null {
+  parse(): DimensionExpression | null {
+    const value = this.sum();
+    return value && this.index === this.tokens.length ? value : null;
+  }
+
+  private sum(): DimensionExpression | null {
     let value = this.product();
     while (this.peek() === '+' || this.peek() === '-') {
       this.index++;
       const right = this.product();
-      if (!value || !right || !value.dimensions.every((item, index) => item === right.dimensions[index])) return null;
+      if (!value || !right) return null;
+      this.constraints.push([value, right]);
     }
     return value;
   }
 
-  private product(): UnitValue | null {
+  private product(): DimensionExpression | null {
     let value = this.power();
     while (this.peek() === '*' || this.peek() === '/') {
       const operator = this.tokens[this.index++];
       const right = this.power();
       if (!value || !right) return null;
-      value = multiply(value, right, operator === '*' ? 1 : -1);
+      const direction = operator === '*' ? 1 : -1;
+      value = {
+        dimensions: value.dimensions.map((item, index) => item + direction * right.dimensions[index]) as Dimensions,
+        targetPower: value.targetPower + direction * right.targetPower
+      };
     }
     return value;
   }
 
-  private power(): UnitValue | null {
+  private power(): DimensionExpression | null {
     let value = this.primary();
     if (this.peek() === '^') {
       this.index++;
@@ -148,27 +173,41 @@ class DimensionExpressionParser {
       const exponent = Number(this.tokens[this.index++]);
       if (this.peek() === ')') this.index++;
       if (!value || !Number.isFinite(exponent)) return null;
-      value = multiply(unit(zero()), value, exponent);
+      value = {
+        dimensions: value.dimensions.map(item => item * exponent) as Dimensions,
+        targetPower: value.targetPower * exponent
+      };
     }
     return value;
   }
 
-  private primary(): UnitValue | null {
+  private primary(): DimensionExpression | null {
     const token = this.tokens[this.index++];
     if (!token) return null;
+    if (token === '+' || token === '-') return this.primary();
     if (token === '(') {
       const value = this.sum();
       if (this.peek() === ')') this.index++;
       return value;
     }
-    if (/^[+-]?\d/.test(token)) return unit(zero());
+    if (/^\d/.test(token) || token === 'pi' || token === 'e') return { dimensions: zero(), targetPower: 0 };
     if (/^(sin|cos|tan|log|ln|exp)$/.test(token) && this.peek() === '(') {
       this.index++;
-      this.sum();
+      const argument = this.sum();
       if (this.peek() === ')') this.index++;
-      return unit(zero());
+      if (!argument) return null;
+      this.constraints.push([argument, { dimensions: zero(), targetPower: 0 }]);
+      return { dimensions: zero(), targetPower: 0 };
     }
-    return this.units.get(token) || null;
+    if (token === 'abs' && this.peek() === '(') {
+      this.index++;
+      const argument = this.sum();
+      if (this.peek() === ')') this.index++;
+      return argument;
+    }
+    if (token === this.targetName) return { dimensions: zero(), targetPower: 1 };
+    const known = this.units.get(token);
+    return known ? { dimensions: known.dimensions, targetPower: 0 } : null;
   }
 
   private peek(): string | undefined { return this.tokens[this.index]; }
@@ -178,15 +217,37 @@ class DimensionExpressionParser {
 export function inferEquationUnit(latex: string, variableName: string, knownUnits: Map<string, string>): string {
   const equation = normalizeLatexExpression(latex).split('=');
   if (equation.length !== 2) return '';
-  const left = equation[0], right = equation[1];
-  const expression = left === variableName ? right : right === variableName ? left : '';
-  if (!expression) return '';
   const units = new Map<string, UnitValue>();
   knownUnits.forEach((unitText, name) => {
     const parsed = parseUnit(unitText);
     if (parsed) units.set(name, parsed);
   });
-  const tokens = expression.match(/[A-Za-z][A-Za-z0-9_]*|(?:\d+(?:\.\d+)?|\.\d+)|[()+\-*/^]/g) || [];
-  const inferred = new DimensionExpressionParser(tokens, units).parse();
-  return inferred ? formatDimensions(inferred.dimensions) : '';
+  units.delete(variableName);
+
+  const tokenize = (expression: string): string[] =>
+    expression.match(/[A-Za-z][A-Za-z0-9_]*|(?:\d+(?:\.\d+)?|\.\d+)|[()+\-*/^]/g) || [];
+  const leftParser = new DimensionExpressionParser(tokenize(equation[0]), units, variableName);
+  const rightParser = new DimensionExpressionParser(tokenize(equation[1]), units, variableName);
+  const left = leftParser.parse(), right = rightParser.parse();
+  if (!left || !right) return '';
+
+  const constraints: Array<[DimensionExpression, DimensionExpression]> = [
+    ...leftParser.constraints,
+    ...rightParser.constraints,
+    [left, right]
+  ];
+  let inferred: Dimensions | null = null;
+  for (const [first, second] of constraints) {
+    const coefficient = first.targetPower - second.targetPower;
+    if (Math.abs(coefficient) < 1e-12) {
+      if (!first.dimensions.every((value, index) => Math.abs(value - second.dimensions[index]) < 1e-9)) return '';
+      continue;
+    }
+    const candidate = first.dimensions.map((value, index) =>
+      (second.dimensions[index] - value) / coefficient) as Dimensions;
+    if (inferred && !candidate.every((value, index) => Math.abs(value - inferred![index]) < 1e-9)) return '';
+    inferred = candidate;
+  }
+  if (!inferred || inferred.some(power => !Number.isFinite(power))) return '';
+  return formatDimensions(inferred.map(power => Math.abs(power) < 1e-9 ? 0 : power) as Dimensions);
 }

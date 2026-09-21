@@ -38,4 +38,33 @@ describe('Project dependency convergence', () => {
     expect(later.context?.variables.map(variable => variable.name)).toContain('a');
     expect(project.lastSolvePasses).toBeGreaterThan(1);
   });
+
+  it('does not erase a known unit when a later result omits it', async () => {
+    const project = new Project('Unit preservation test');
+    const first = CellSerializer.createCodeCell('creates_force');
+    const later = CellSerializer.createCodeCell('copies_context_without_units');
+    first.outputs = [{ name: 'force', value: '', unit: 'N' }];
+    project.cells = [first, later];
+
+    const executor = {
+      executeCodeCell: async (source: string, context: { variables: Variable[] }) => {
+        const variables = context.variables.map(variable =>
+          new Variable(variable.name, variable.type, [...variable.values], ''));
+        if (source === 'creates_force' && !variables.some(variable => variable.name === 'force')) {
+          variables.push(Variable.createNumerical('force', ['12']));
+        }
+        return {
+          functionName: 'calculate',
+          outputs: source === 'creates_force' ? [{ name: 'force', value: '12', unit: '' }] : [],
+          stdout: '',
+          context: { variables }
+        };
+      }
+    } as unknown as PythonExecutorService;
+
+    await project.updateContext(first.id, executor);
+
+    expect(first.context?.variables.find(variable => variable.name === 'force')?.unit).toBe('N');
+    expect(later.context?.variables.find(variable => variable.name === 'force')?.unit).toBe('N');
+  });
 });
