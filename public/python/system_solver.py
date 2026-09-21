@@ -92,9 +92,6 @@ def _choose_candidate(candidates, symbols, settings):
 
 
 def _numerical_solution(expressions, sides, symbols, settings):
-    from scipy.optimize import least_squares
-    from sympy import lambdify
-
     names = [str(symbol) for symbol in symbols]
     if any(settings.get(name, {}).get("guess") in (None, "") for name in names):
         return None, "Set an initial guess for every unknown in this group to enable numerical solving."
@@ -103,6 +100,9 @@ def _numerical_solution(expressions, sides, symbols, settings):
     upper = [float(settings[name]["max"]) if settings[name].get("max") not in (None, "") else math.inf for name in names]
     if any(not low < guess < high for low, guess, high in zip(lower, guesses, upper)):
         return None, "Each initial guess must lie strictly between its bounds."
+    from scipy.optimize import least_squares
+    from sympy import lambdify
+
     functions = [lambdify(symbols, expression, modules="numpy") for expression in expressions]
     sides_functions = [(lambdify(symbols, left, modules="numpy"),
                         lambdify(symbols, right, modules="numpy")) for left, right in sides]
@@ -184,8 +184,6 @@ def solve_system(payload):
                 diagnostics.append("%s: equation conflicts with known inputs." % label)
             continue
         if len(expressions) < len(symbols):
-            blocked_variables.update(map(str, symbols))
-            blocked_cells.update(item["id"] for item in group)
             diagnostics.append("%s: %d equations for %d unknowns; add a constraint or input." %
                                (label, len(expressions), len(symbols)))
             continue
@@ -201,13 +199,9 @@ def solve_system(payload):
             except ImportError:
                 return {"needsScipy": True}
             except (ValueError, TypeError, OverflowError) as error:
-                blocked_variables.update(map(str, symbols))
-                blocked_cells.update(item["id"] for item in group)
                 diagnostics.append("%s: numerical solving failed (%s)." % (label, error))
                 continue
             if candidate is None:
-                blocked_variables.update(map(str, symbols))
-                blocked_cells.update(item["id"] for item in group)
                 diagnostics.append("%s: %s" % (label, reason))
                 continue
         results.update({name: {"value": str(value), "method": reason} for name, value in candidate.items()})

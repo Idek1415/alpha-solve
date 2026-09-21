@@ -95,6 +95,34 @@ describe('Project dependency convergence', () => {
     expect(Project.fromString(project.toString()).solverTargets).toEqual(project.solverTargets);
   });
 
+  it('keeps a solved value and card result when a later pass cannot solve the group', async () => {
+    const project = new Project('Stable results');
+    const cell = CellSerializer.createEquationCell('x=2');
+    project.cells = [cell];
+    const executor = {
+      getAvailableProcMacros: () => [],
+      getAvailableFunctions: () => [],
+      solveEquationSystem: jasmine.createSpy('solveEquationSystem').and.returnValues(
+        Promise.resolve({
+          variables: { x: { value: '2', method: 'symbolic' } },
+          solutionsByCell: { [cell.id]: ['x=2'] },
+          blockedVariables: [], blockedCells: [], diagnostics: []
+        }),
+        Promise.resolve({
+          variables: {}, solutionsByCell: {}, blockedVariables: [], blockedCells: [],
+          diagnostics: ['Set an initial guess for every unknown in this group.']
+        })
+      )
+    } as unknown as PythonExecutorService;
+
+    await project.updateContext(cell.id, executor);
+
+    expect(project.lastSolvePasses).toBe(2);
+    expect(cell.context?.variables.find(variable => variable.name === 'x')?.values).toEqual(['2']);
+    expect(cell.solutions).toEqual(['x=2']);
+    expect(project.solveDiagnostics).toContain('Set an initial guess for every unknown in this group.');
+  });
+
   it('removes a stale plugin answer when the coupled solver finds ambiguity', async () => {
     const project = new Project('Ambiguous system');
     const cell = CellSerializer.createEquationCell('x^2=4');

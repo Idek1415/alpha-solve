@@ -4,6 +4,10 @@ Alpha Solve is a local-first engineering workspace for equations, parameters, ex
 
 built on alpha solve by Jack Neeleman (icanthink42)
 
+## Patch update (0.4.1)
+
+Repeated solver passes no longer clear valid equation cards or computed variables when a nonlinear group cannot be solved without initial guesses or has insufficient constraints. The solver still reports why that group needs attention. Ambiguous multi-branch results still require a branch choice before they are treated as a single computed value.
+
 ## Solver update (0.4.0)
 
 Connected algebraic equations are now solved together. The optional Solver targets panel lets you give an unknown an initial guess and lower or upper bounds, all in coherent SI units. If symbolic solving cannot finish, a numerical SciPy solver uses those guesses and checks the result against every equation. Ambiguous solutions, conflicting inputs, and systems with too few equations are reported above the calculation cards. These settings travel with exported system JSON.

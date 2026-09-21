@@ -482,9 +482,8 @@ export class Project {
     }
 
     if (metaResults.length === 0) {
-      // No meta functions available, propagate context and clear solutions/dropdowns
+      // The coupled solver or an earlier pass may have produced a valid result.
       cell.context = inputContext;
-      cell.solutions = [];
       cell.dropdowns = undefined;
       cell.dropdownSelections = undefined;
       cell.updatedAt = new Date();
@@ -495,9 +494,8 @@ export class Project {
     const usableResults = metaResults.filter(mr => mr.result.useResult);
 
     if (usableResults.length === 0) {
-      // No functions want to be used, propagate context and clear solutions/dropdowns
+      // A plugin declining this pass must not erase a previously solved value.
       cell.context = inputContext;
-      cell.solutions = [];
       cell.dropdowns = undefined;
       cell.dropdownSelections = undefined;
       cell.updatedAt = new Date();
@@ -558,7 +556,7 @@ export class Project {
         }
 
         // Update visible solutions if provided
-        if (cellResult.visibleSolutions) {
+        if (cellResult.visibleSolutions?.length) {
           const isOnlyConfirmation = cellResult.visibleSolutions.length > 0 &&
             cellResult.visibleSolutions.every(solution => /^(?:\$\$)?\s*(?:True|False)\s*(?:\$\$)?$/i.test(solution));
           if (!isOnlyConfirmation || !cell.solutions?.length) {

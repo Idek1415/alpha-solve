@@ -46,6 +46,18 @@ class SystemSolverTests(unittest.TestCase):
         })
         self.assertEqual(result["variables"], {})
         self.assertIn("2 unknowns", result["diagnostics"][0])
+        self.assertEqual(result["blockedVariables"], [])
+        self.assertEqual(result["blockedCells"], [])
+
+    def test_missing_numerical_guesses_do_not_invalidate_other_solutions(self):
+        result = solve_system({
+            "equations": [equation("nonlinear", r"x+\sin(x)=2")],
+            "known": [], "targets": []
+        })
+        self.assertNotIn("needsScipy", result)
+        self.assertEqual(result["blockedVariables"], [])
+        self.assertEqual(result["blockedCells"], [])
+        self.assertIn("initial guess", result["diagnostics"][0])
 
     def test_reports_conflicting_known_inputs(self):
         result = solve_system({
