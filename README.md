@@ -1,5 +1,5 @@
 # Alpha Solve App
-
+Alpha Solve is a local-first engineering workspace for equations, parameters, executable Python functions, and calculated results. The interface is Angular 20 and the desktop shell is Tauri 2.
 built on alpha solve by Jack Neeleman (icanthink42)
 
 ## Desktop usability update (0.3.4)
@@ -10,7 +10,7 @@ Native Open and Save dialogs start in `Documents/Alpha Solve App`. Export JSON u
 
 Validation: production and Windows installer builds; regression tests for retaining projects, reorder/undo, collapse state, multi-pass dependency convergence, unit inference, and unit preservation. Native window minimize/maximize and native file-dialog interactions still require Windows smoke testing.
 
-Alpha Solve is a local-first engineering workspace for equations, parameters, executable Python functions, and calculated results. The interface is Angular 20 and the desktop shell is Tauri 2.
+
 
 ## Current product slice
 
