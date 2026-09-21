@@ -209,6 +209,18 @@ export class Project {
         passContext = await this.solveCoupledEquations(executable, passContext, inputs, inputNames, pythonExecutor);
       }
 
+      if (typeof pythonExecutor.resolveComputedValues === 'function') {
+        const equations = executable.filter((cell): cell is EquationCell => cell.type === 'equation');
+        const resolved = await pythonExecutor.resolveComputedValues({
+          variables: passContext.variables,
+          solutionsByCell: Object.fromEntries(equations.map(cell => [cell.id, cell.solutions || []]))
+        });
+        passContext = { variables: resolved.variables.map(variable => Variable.fromJSON(variable)) };
+        for (const cell of equations) {
+          cell.solutions = resolved.solutionsByCell[cell.id] || cell.solutions;
+        }
+      }
+
       known = passContext;
       this.lastSolvePasses = pass;
       const signature = this.contextSignature(known);

@@ -26,6 +26,76 @@ def _numeric(value):
     return result.real if abs(result.imag) <= 1e-9 * max(1.0, abs(result.real)) else None
 
 
+def resolve_computed_values(payload):
+    """Substitute unambiguous scalar values into dependent variables and card results."""
+    variables = payload.get("variables", [])
+    local_symbols = {variable["name"]: Symbol(variable["name"]) for variable in variables}
+    expressions = {}
+    for variable in variables:
+        parsed = []
+        for value in variable.get("values", []):
+            try:
+                expression = sympify(value, locals=local_symbols)
+                parsed.append(expression if hasattr(expression, "subs") and hasattr(expression, "free_symbols") else None)
+            except (ValueError, TypeError, SyntaxError, SympifyError):
+                parsed.append(None)
+        expressions[variable["name"]] = parsed
+
+    known = {}
+    for _ in range(len(variables)):
+        changed = False
+        for variable in variables:
+            name = variable["name"]
+            values = expressions[name]
+            if name in known or len(values) != 1 or values[0] is None:
+                continue
+            candidate = values[0].subs(known)
+            if not candidate.free_symbols and _numeric(candidate) is not None:
+                known[Symbol(name)] = candidate
+                changed = True
+        if not changed:
+            break
+
+    resolved_variables = []
+    for variable in variables:
+        resolved = dict(variable)
+        values = []
+        numeric = True
+        for original, parsed in zip(variable.get("values", []), expressions[variable["name"]]):
+            if parsed is None:
+                values.append(original)
+                numeric = False
+                continue
+            result = parsed.subs(known)
+            values.append(str(result) if result != parsed else original)
+            numeric = numeric and not result.free_symbols and _numeric(result) is not None
+        resolved["values"] = values
+        if values and numeric:
+            resolved["type"] = "numerical"
+        resolved_variables.append(resolved)
+
+    resolved_cells = {}
+    for cell_id, solutions in payload.get("solutionsByCell", {}).items():
+        resolved_cells[cell_id] = []
+        for solution in solutions:
+            wrapped = solution.startswith("$$") and solution.endswith("$$")
+            source = solution[2:-2] if wrapped else solution
+            try:
+                equation = from_latex(source)
+                if not isinstance(equation, Eq):
+                    raise ValueError("not an equation")
+                right = equation.rhs.subs(known)
+                if right == equation.rhs:
+                    resolved_cells[cell_id].append(solution)
+                    continue
+                rendered = latex(equation.lhs) + "=" + latex(right)
+                resolved_cells[cell_id].append("$$" + rendered + "$$" if wrapped else rendered)
+            except Exception:
+                resolved_cells[cell_id].append(solution)
+
+    return {"variables": resolved_variables, "solutionsByCell": resolved_cells}
+
+
 def _connected_components(records):
     remaining = list(records)
     groups = []

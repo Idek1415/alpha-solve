@@ -4,6 +4,10 @@ Alpha Solve is a local-first engineering workspace for equations, parameters, ex
 
 built on alpha solve by Jack Neeleman (icanthink42)
 
+## Patch update (0.4.2)
+
+Single-valued numerical results now propagate into symbolic results on later dependency passes. For example, when `LMR` resolves to `1`, a previously calculated `BF = 0.381/LMR` becomes numerical in both the computed-variable table and equation card. Multi-valued branches are retained without arbitrarily selecting one.
+
 ## Patch update (0.4.1)
 
 Repeated solver passes no longer clear valid equation cards or computed variables when a nonlinear group cannot be solved without initial guesses or has insufficient constraints. The solver still reports why that group needs attention. Ambiguous multi-branch results still require a branch choice before they are treated as a single computed value.

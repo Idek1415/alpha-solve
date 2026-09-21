@@ -41,6 +41,11 @@ export interface SystemSolveInput {
   targets: Array<{ name: string; guess: string; min: string; max: string }>;
 }
 
+export interface ResolvedComputedValues {
+  variables: Variable[];
+  solutionsByCell: Record<string, string[]>;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -284,6 +289,17 @@ json.dumps(solve_system(json.loads(system_solve_input_json)))
       result = JSON.parse(await this.pyodide.runPythonAsync(code));
     }
     return result as SystemSolveResult;
+  }
+
+  async resolveComputedValues(input: ResolvedComputedValues): Promise<ResolvedComputedValues> {
+    if (!this.isInitialized || !this.pyodide) throw new Error('Python executor is not initialized.');
+    this.pyodide.globals.set('computed_values_input_json', JSON.stringify(input));
+    const result = await this.pyodide.runPythonAsync(`
+import json
+from system_solver import resolve_computed_values
+json.dumps(resolve_computed_values(json.loads(computed_values_input_json)))
+    `);
+    return JSON.parse(result) as ResolvedComputedValues;
   }
 
   /**

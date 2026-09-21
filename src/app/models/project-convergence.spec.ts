@@ -123,6 +123,45 @@ describe('Project dependency convergence', () => {
     expect(project.solveDiagnostics).toContain('Set an initial guess for every unknown in this group.');
   });
 
+  it('carries a later scalar value into an earlier symbolic result', async () => {
+    const project = new Project('Symbolic dependency');
+    const ratio = CellSerializer.createEquationCell('BF=0.381/LMR');
+    const target = CellSerializer.createEquationCell('LMR=1');
+    project.cells = [ratio, target];
+    const executor = {
+      getAvailableProcMacros: () => [],
+      getAvailableFunctions: () => [{ functionName: 'mock' }],
+      callMetaFunction: async () => ({ result: { index: 0, name: 'mock', useResult: true } }),
+      callFunction: async (_name: string, input: { cell: { latex: string }; context: { variables: Variable[] } }) => {
+        const isRatio = input.cell.latex.startsWith('BF');
+        const variable = Variable.createNumerical(isRatio ? 'BF' : 'LMR', [isRatio ? '0.381/LMR' : '1']);
+        return {
+          result: {
+            newContext: { variables: [...input.context.variables, variable] },
+            visibleSolutions: [isRatio ? 'BF=0.381/LMR' : 'LMR=1']
+          }
+        };
+      },
+      resolveComputedValues: jasmine.createSpy('resolveComputedValues').and.callFake(async (
+        input: { variables: Variable[]; solutionsByCell: Record<string, string[]> }
+      ) => {
+        const hasTarget = input.variables.some(variable => variable.name === 'LMR');
+        return {
+          variables: input.variables.map(variable => variable.name === 'BF' && hasTarget
+            ? Variable.createNumerical('BF', ['0.381']) : variable),
+          solutionsByCell: { ...input.solutionsByCell, [ratio.id]: hasTarget ? ['BF=0.381'] : ['BF=0.381/LMR'] }
+        };
+      })
+    } as unknown as PythonExecutorService;
+
+    await project.updateContext(ratio.id, executor);
+
+    expect(ratio.context?.variables.find(variable => variable.name === 'BF')?.values).toEqual(['0.381']);
+    expect(ratio.solutions).toEqual(['BF=0.381']);
+    expect((executor.resolveComputedValues as jasmine.Spy).calls.mostRecent().args[0].variables
+      .some((variable: Variable) => variable.name === 'LMR')).toBeTrue();
+  });
+
   it('removes a stale plugin answer when the coupled solver finds ambiguity', async () => {
     const project = new Project('Ambiguous system');
     const cell = CellSerializer.createEquationCell('x^2=4');
