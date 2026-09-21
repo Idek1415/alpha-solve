@@ -2,11 +2,11 @@
 
 built on alpha solve by Jack Neeleman (icanthink42)
 
-## Desktop usability update (0.3.3)
+## Desktop usability update (0.3.4)
 
 Open projects remain in the explorer when creating or opening another project. Cards and projects have collapse controls, and calculation handles support drag reordering. Parameter names and equations use math-aware editors with subscript support. Help provides feature topics and keyboard navigation.
 
-Native Open and Save dialogs start in `Documents/Alpha Solve App`. Export JSON uses the same Save dialog and displays the full saved path. Runtime status stays in the bottom bar. Long equation results scroll horizontally instead of being clipped. Recognized SI inputs are normalized, and compatible equation units are inferred and preserved through convergent solver passes.
+Native Open and Save dialogs start in `Documents/Alpha Solve App`. Export JSON uses the same Save dialog and displays the full saved path. Runtime status stays in the bottom bar. Long equation results scroll horizontally instead of being clipped. Recognized SI inputs are normalized, and compatible equation units are inferred and preserved through convergent solver passes. Light mode now uses light variable editors and scrollbars with a dark, visible typing cursor.
 
 Validation: production and Windows installer builds; regression tests for retaining projects, reorder/undo, collapse state, multi-pass dependency convergence, unit inference, and unit preservation. Native window minimize/maximize and native file-dialog interactions still require Windows smoke testing.
 

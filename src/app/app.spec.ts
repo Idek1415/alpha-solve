@@ -24,6 +24,31 @@ describe('App', () => {
     expect(compiled.querySelector('.app-title')?.textContent).toContain('Alpha Solve');
   });
 
+  it('uses light caret, variable editor, and scrollbar colors only in light mode', () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    const app = fixture.componentInstance as any;
+    const shell = fixture.nativeElement.querySelector('.application-shell') as HTMLElement;
+    const parameterValue = shell.querySelector('.parameter-value') as HTMLInputElement;
+    const variableEditor = shell.querySelector('.parameter-name-editor .mathquill-input') as HTMLElement;
+
+    app.toggleTheme();
+    fixture.detectChanges();
+
+    expect(shell.classList.contains('light-theme')).toBeTrue();
+    expect(getComputedStyle(parameterValue).caretColor).toBe('rgb(23, 44, 61)');
+    expect(getComputedStyle(variableEditor).backgroundColor).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(variableEditor).color).toBe('rgb(32, 49, 62)');
+    expect(getComputedStyle(shell).colorScheme).toBe('light');
+    expect(getComputedStyle(shell.querySelector('.parameter-table')!).scrollbarColor)
+      .toBe('rgb(174, 187, 197) rgb(237, 241, 244)');
+
+    app.toggleTheme();
+    fixture.detectChanges();
+    expect(shell.classList.contains('light-theme')).toBeFalse();
+    expect(getComputedStyle(parameterValue).caretColor).toBe('rgb(255, 255, 255)');
+  });
+
   it('retains the original project when creating and switching projects', () => {
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance as any;

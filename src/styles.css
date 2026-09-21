@@ -35,3 +35,122 @@ select {
   scrollbar-width: thin;
   scrollbar-color: #454e57 #171b1f;
 }
+
+/* Native controls and MathQuill live in different Angular style scopes. Keep
+   their colors tied to the application theme instead of the document default. */
+.application-shell.light-theme {
+  color-scheme: light;
+}
+
+.application-shell.light-theme * {
+  scrollbar-color: #aebbc5 #edf1f4;
+}
+
+.application-shell.light-theme input,
+.application-shell.light-theme textarea,
+.application-shell.light-theme [contenteditable] {
+  caret-color: #172c3d;
+}
+
+.application-shell.light-theme .mq-editable-field .mq-cursor {
+  border-left-color: #172c3d !important;
+}
+
+.application-shell.light-theme .parameter-name-editor,
+.application-shell.light-theme .parameter-name-editor .mathquill-input {
+  color: #20313e;
+  background: #fff;
+}
+
+.application-shell.light-theme .parameter-name-editor .mathquill-input:focus-within {
+  background: #eaf3f9;
+}
+
+.application-shell.light-theme .parameter-name-editor .mq-editable-field.mq-focused {
+  border-color: #5086a8;
+  box-shadow: 0 0 0 1px #83abc4;
+}
+
+.application-shell.light-theme .parameter-row:focus-within {
+  background: #eaf3f9;
+}
+
+.application-shell.light-theme .parameter-row input {
+  border-right-color: #c8d0d6;
+}
+
+.application-shell.light-theme .parameter-row .parameter-name-editor {
+  border-right-color: #c8d0d6;
+}
+
+.application-shell.light-theme .parameter-row .parameter-value,
+.application-shell.light-theme .parameter-row .parameter-unit,
+.application-shell.light-theme .computed-row .computed-value,
+.application-shell.light-theme .computed-row span:last-child {
+  color: #24333f;
+}
+
+.application-shell.light-theme .parameter-row button,
+.application-shell.light-theme .card-actions button {
+  color: #53636e;
+}
+
+.application-shell.light-theme .card-actions button:hover:not(:disabled),
+.application-shell.light-theme .group-toggle:hover {
+  color: #182c3b;
+  background: #dce8f0;
+}
+
+.application-shell.light-theme .badge,
+.application-shell.light-theme .execution-state {
+  color: #465866;
+  background: #e8edf0;
+  border-color: #becbd4;
+}
+
+.application-shell.light-theme .output-list,
+.application-shell.light-theme .output-row,
+.application-shell.light-theme .computed-heading,
+.application-shell.light-theme .computed-empty {
+  border-color: #c8d0d6;
+}
+
+.application-shell.light-theme .computed-empty,
+.application-shell.light-theme .execution-time {
+  color: #53636e;
+}
+
+.application-shell.light-theme .stdout-block pre,
+.application-shell.light-theme .help-layout pre {
+  color: #263640;
+  background: #e9eef1;
+}
+
+.application-shell.light-theme .json-card {
+  background: #f2f6f8;
+  border-color: #bdcbd4;
+}
+
+.application-shell.light-theme .json-card strong,
+.application-shell.light-theme .json-card p {
+  color: #344b5b;
+}
+
+.application-shell.light-theme .json-card button,
+.application-shell.light-theme .help-dialog button {
+  color: #234157;
+  background: #e5eef4;
+  border-color: #aebfc9;
+}
+
+.application-shell.light-theme .save-notice {
+  color: #173d31;
+  background: #e5f3ec;
+  border-color: #85ad98;
+}
+
+.application-shell.light-theme .save-notice button {
+  color: #173d31;
+  background: #f4fbf7;
+  border-color: #85ad98;
+}
