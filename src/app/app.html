@@ -134,6 +134,12 @@
               <button (click)="errorMessage.set(null)">×</button>
             </div>
           }
+          @if (system.solveDiagnostics.length) {
+            <div class="solver-diagnostics" role="status">
+              <strong>Solver needs attention</strong>
+              @for (diagnostic of system.solveDiagnostics; track $index) { <p>{{ diagnostic }}</p> }
+            </div>
+          }
 
           @for (cell of system.cells; track cell.id; let i = $index) {
             <article
@@ -303,6 +309,24 @@
 
         <button class="add-parameter-button" (click)="addParameter()">＋ Add input parameter</button>
 
+        <details class="solver-settings">
+          <summary>Solver targets <span>{{ system.solverTargets.length }}</span></summary>
+          <div class="solver-settings-body">
+            <p>Optional: name unknowns to choose a solution. Add a guess for numerical solving; bounds restrict acceptable values. Use equation names and coherent SI values.</p>
+            <div class="solver-target-head"><span>Unknown</span><span>Guess</span><span>Min</span><span>Max</span><span></span></div>
+            @for (target of system.solverTargets; track $index; let i = $index) {
+              <div class="solver-target-row">
+                <input [(ngModel)]="target.name" (ngModelChange)="parameterChanged()" aria-label="Unknown variable name" placeholder="x_0" />
+                <input [(ngModel)]="target.guess" (ngModelChange)="parameterChanged()" aria-label="Initial guess" placeholder="optional" inputmode="decimal" />
+                <input [(ngModel)]="target.min" (ngModelChange)="parameterChanged()" aria-label="Minimum value" placeholder="optional" inputmode="decimal" />
+                <input [(ngModel)]="target.max" (ngModelChange)="parameterChanged()" aria-label="Maximum value" placeholder="optional" inputmode="decimal" />
+                <button (click)="removeSolverTarget(i)" [attr.aria-label]="'Remove solver target ' + (target.name || i + 1)">×</button>
+              </div>
+            }
+            <button class="add-solver-target" (click)="addSolverTarget()">＋ Add target</button>
+          </div>
+        </details>
+
         <div class="parameter-section-header computed-heading">
           <span>Computed</span><span>{{ computedVariables().length }}</span>
         </div>
@@ -346,7 +370,7 @@
             @case ('Equations and variables') {<p>Define named inputs on the right and type those same names directly in equations. Parameter names use a math editor too: type an underscore to create a subscript, such as x_0.</p><p>Example: U = 0.5 × k × x_0². Type * for multiplication, / for fractions, ^ for powers, and _ for subscripts. Use arrow keys to leave a subscript or fraction.</p><p>Inputs and calculated values are shared across all calculations. Alpha Solve repeats dependency passes until no values or units change. Use explicit multiplication between names. Recognized SI input units are normalized and computed units are inferred dimensionally through products, quotients, powers, roots, and dimensionally consistent sums. Blank computed units indicate that the expression or one of its inputs could not be resolved dimensionally.</p>}
             @case ('Python functions') {<p>Write exactly one Python function. Its arguments match input names or calculated variables from anywhere in the system. Return a dictionary whose keys name the output variables.</p><pre>def calculate(m, k):
     return {{ '{' }}"frequency": (k / m) ** 0.5{{ '}' }}</pre><p>Imports belong inside your function. Print output appears under Console output. Only run code from sources you trust. Runtime packages currently require an internet connection.</p>}
-            @case ('Solver capabilities') {<p>The active analytical solver currently supports:</p><ul>@for (capability of solverCapabilities; track capability) {<li>{{ capability }}</li>}</ul><p>Input values using recognized SI units and prefixes are normalized to coherent SI before evaluation (for example, GPa to Pa). Derived equation units are inferred for direct forms such as F = m × a. More complex dimensional models should still be reviewed by the engineer.</p>}
+            @case ('Solver capabilities') {<p>The solver groups equations that share unknowns and solves those equations together. Add optional Solver targets in the right panel to specify a variable's initial guess and bounds. If symbolic solving has several valid answers, bounds or guesses select a branch. Numerical solving requires a guess for each unknown in its connected group. The app reports insufficient equations, conflicts, and ambiguous answers above the cards.</p><ul>@for (capability of solverCapabilities; track capability) {<li>{{ capability }}</li>}</ul><p>Input values using recognized SI units and prefixes are normalized to coherent SI before evaluation (for example, GPa to Pa). Derived equation units are inferred where dimensional relationships can be resolved; review complex models before using results.</p>}
             @case ('Arrange calculations') {<p>Drag the dotted handle at the left of a card onto another card to organize the calculation sequence. The arrow buttons remain available for keyboard users.</p><p>The arrow beside the handle collapses or expands a card. Dependency passes allow values to flow in either direction, while order still controls which calculation runs first. Undo and Redo reverse edits within the active project.</p>}
             @case ('JSON and LLMs') {<p>Export JSON creates the compact portable system file. LLM JSON creates a self-describing package containing the same system plus exact import shapes, identifier and subscript rules, value/unit-entry rules, dependency behavior, safety guidance, and solver capabilities. Both formats can be imported directly.</p><p>Imported code is not automatically executed. Review it before running. For reliable analysis, ask the LLM to verify assumptions and dimensional consistency rather than treating stored results as authoritative.</p><h4>Current solver capabilities</h4><ul>@for (capability of solverCapabilities; track capability) {<li>{{ capability }}</li>}</ul>}
             @case ('About') {<p>Alpha Solve App</p><p>built on alpha solve by Jack Neeleman (icanthink42)</p><p>This desktop interface uses the existing Alpha Solve analytical solver. The original work provides the foundation for its mathematical capabilities.</p>}

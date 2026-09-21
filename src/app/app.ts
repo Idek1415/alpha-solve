@@ -52,7 +52,9 @@ export class App implements OnDestroy {
     'Definite and indefinite integrals supported by the active SymPy solver',
     'Ordinary differential equations supported by the active SymPy solver',
     'Custom single-function Python calculations returning named variables',
-    'Multi-pass dependencies between equations and Python calculations'
+    'Multi-pass dependencies between equations and Python calculations',
+    'Simultaneous solving of connected algebraic equations',
+    'Numerical solving with initial guesses and optional bounds when symbolic solving fails'
   ];
   private draggedCell: string | null = null;
 
@@ -297,6 +299,7 @@ export class App implements OnDestroy {
   protected parameterChanged(): void {
     const system = this.activeSystem();
     if (!system) return;
+    system.solveDiagnostics = [];
     system.updatedAt = new Date();
     const firstCell = system.cells[0];
     if (firstCell) this.markFromCellStale(firstCell.id);
@@ -349,6 +352,20 @@ export class App implements OnDestroy {
     this.parameterChanged();
   }
 
+  protected addSolverTarget(): void {
+    const system = this.activeSystem();
+    if (!system) return;
+    system.solverTargets.push({ name: '', guess: '', min: '', max: '' });
+    this.parameterChanged();
+  }
+
+  protected removeSolverTarget(index: number): void {
+    const system = this.activeSystem();
+    if (!system) return;
+    system.solverTargets.splice(index, 1);
+    this.parameterChanged();
+  }
+
   protected async runSystem(): Promise<void> {
     const system = this.activeSystem();
     if (!system || this.isRunning()) return;
@@ -368,7 +385,9 @@ export class App implements OnDestroy {
     try {
       await system.updateContext(firstExecutable.id, this.pythonExecutor);
       this.recordChange();
-      this.statusMessage.set(`Completed ${system.name} in ${system.lastSolvePasses} dependency pass${system.lastSolvePasses === 1 ? '' : 'es'}`);
+      this.statusMessage.set(system.solveDiagnostics.length
+        ? `Completed with ${system.solveDiagnostics.length} solver issue${system.solveDiagnostics.length === 1 ? '' : 's'}`
+        : `Completed ${system.name} in ${system.lastSolvePasses} dependency pass${system.lastSolvePasses === 1 ? '' : 'es'}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.errorMessage.set(message);
@@ -391,7 +410,9 @@ export class App implements OnDestroy {
     try {
       await system.updateContext(cell.id, this.pythonExecutor);
       this.recordChange();
-      this.statusMessage.set(`Run complete · ${system.lastSolvePasses} dependency pass${system.lastSolvePasses === 1 ? '' : 'es'}`);
+      this.statusMessage.set(system.solveDiagnostics.length
+        ? `Completed with ${system.solveDiagnostics.length} solver issue${system.solveDiagnostics.length === 1 ? '' : 's'}`
+        : `Run complete · ${system.lastSolvePasses} dependency pass${system.lastSolvePasses === 1 ? '' : 'es'}`);
     } finally {
       this.isRunning.set(false);
       this.touch(false);
@@ -454,6 +475,7 @@ export class App implements OnDestroy {
         'Use the exact canonical variable identifiers defined below. Identifiers are case-sensitive.',
         'Use explicit multiplication in equations: write x\\cdot y, never xy when x times y is intended.',
         'Calculation order is an initial evaluation order, not a one-way dependency rule. Re-evaluate dependencies until values stabilize.',
+        'Solver targets specify canonical unknown names, initial guesses, and optional lower/upper bounds. Blank fields mean unspecified.',
         'Check dimensional consistency before trusting numerical conclusions. Clearly identify assumptions, unresolved symbols, and unsupported operations.'
       ],
       importFormat: {
@@ -470,6 +492,7 @@ export class App implements OnDestroy {
           format: 'alpha-solve/system', version: 1, id: 'non-empty unique string',
           name: 'non-empty system name', description: 'plain-text engineering description',
           parameters: 'array of parameter objects in the exact parameter format below',
+          solverTargets: 'optional array of {name, guess, min, max}; all values are strings, and blank numeric fields are omitted constraints',
           cells: 'array of equation, code, note, or folder cells in evaluation order',
           createdAt: 'ISO-8601 timestamp string', updatedAt: 'ISO-8601 timestamp string'
         },
@@ -486,6 +509,12 @@ export class App implements OnDestroy {
           latex: 'LaTeX equation using canonical variable identifiers and explicit \\cdot multiplication',
           context: { variables: [] }, solutions: [],
           createdAt: 'ISO-8601 timestamp string', updatedAt: 'ISO-8601 timestamp string'
+        },
+        exactSolverTargetFormat: {
+          name: 'canonical unknown identifier matching ^[A-Za-z][A-Za-z0-9_]*$',
+          guess: 'initial numerical guess as a string in coherent SI units, or empty string',
+          min: 'optional lower bound as a string in coherent SI units, or empty string',
+          max: 'optional upper bound as a string in coherent SI units, or empty string'
         },
         exactNoteCellFormat: {
           id: 'non-empty unique string', type: 'note', content: 'plain text',
@@ -525,6 +554,7 @@ export class App implements OnDestroy {
       solverCapabilities: this.solverCapabilities,
       organization: {
         parameters: 'Named input values with descriptions and units.',
+        solverTargets: 'Optional solution-selection settings for unresolved variables.',
         cells: 'Ordered equation, Python function, note, or folder records.',
         context: 'Last converged set of named variables available across calculations.',
         solutions: 'Human-readable LaTeX results from the last run.'
@@ -642,14 +672,14 @@ export class App implements OnDestroy {
       this.statusMessage.set('Loading analytical solver…');
       plugins.push(await Plugin.loadFromGit('https://github.com/icanthink42/alpha_solve_analytical.git'));
     } catch (error) {
-      console.warn('The analytical plugin could not be loaded. Code cells remain available.', error);
+      console.warn('The analytical plugin could not be loaded. The system solver and code cells remain available.', error);
     }
 
     try {
       this.statusMessage.set('Starting Python runtime…');
       await this.pythonExecutor.initialize(plugins);
       this.pluginCount.set(plugins.length);
-      this.statusMessage.set(plugins.length > 0 ? 'Ready · analytical solver loaded' : 'Ready · code cells available');
+      this.statusMessage.set(plugins.length > 0 ? 'Ready · analytical and system solvers loaded' : 'Ready · system solver available');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.errorMessage.set(message);

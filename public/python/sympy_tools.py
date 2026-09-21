@@ -55,7 +55,7 @@ def from_latex(latex_str: str):
         parts = expr_str.split('=', 1)
         left = parse_expr(parts[0], local_dict=local_dict, transformations=(standard_transformations + (implicit_multiplication_application,)))
         right = parse_expr(parts[1], local_dict=local_dict, transformations=(standard_transformations + (implicit_multiplication_application,)))
-        return Eq(left, right)
+        return Eq(left, right, evaluate=False)
     else:
         return parse_expr(expr_str, local_dict=local_dict, transformations=(standard_transformations + (implicit_multiplication_application,)))
 
@@ -83,7 +83,7 @@ def _handle_derivatives(latex: str) -> str:
 
 
 def _handle_integrals(latex: str) -> str:
-    """
+    r"""
     Handle integral notation in LaTeX.
     Converts:
     - \int_a^b f(x) dx -> Integral(f(x), (x, a, b))

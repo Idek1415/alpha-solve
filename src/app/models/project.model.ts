@@ -11,6 +11,13 @@ import {
 } from './engineering-parameter.model';
 import { inferEquationUnit } from './unit-system';
 
+export interface SolverTarget {
+  name: string;
+  guess: string;
+  min: string;
+  max: string;
+}
+
 export const SYSTEM_FORMAT = 'alpha-solve/system';
 export const SYSTEM_VERSION = 1;
 
@@ -23,6 +30,8 @@ export class Project {
   cells: Cell[];
   description: string;
   parameters: EngineeringParameter[];
+  solverTargets: SolverTarget[];
+  solveDiagnostics: string[] = [];
   createdAt: Date;
   updatedAt: Date;
   lastSolvePasses = 0;
@@ -34,13 +43,15 @@ export class Project {
     createdAt?: Date,
     updatedAt?: Date,
     description: string = '',
-    parameters: EngineeringParameter[] = []
+    parameters: EngineeringParameter[] = [],
+    solverTargets: SolverTarget[] = []
   ) {
     this.id = id || crypto.randomUUID();
     this.name = name;
     this.cells = cells;
     this.description = description;
     this.parameters = parameters;
+    this.solverTargets = solverTargets;
     this.createdAt = createdAt || new Date();
     this.updatedAt = updatedAt || new Date();
   }
@@ -99,6 +110,7 @@ export class Project {
       name: this.name,
       description: this.description,
       parameters: this.parameters,
+      solverTargets: this.solverTargets,
       cells: this.cells.map((c) => CellSerializer.serialize(c)),
       createdAt: this.createdAt.toISOString(),
       updatedAt: this.updatedAt.toISOString(),
@@ -130,7 +142,8 @@ export class Project {
       new Date(data.createdAt),
       new Date(data.updatedAt),
       data.description || '',
-      data.parameters || []
+      data.parameters || [],
+      data.solverTargets || []
     );
   }
 
@@ -172,6 +185,8 @@ export class Project {
     const startIndex = executable.findIndex(cell => cell.id === cellId);
     if (startIndex < 0) return;
 
+    this.solveDiagnostics = [];
+
     const ordered = [...executable.slice(startIndex), ...executable.slice(0, startIndex)];
     const inputs = parametersToContext(this.parameters);
     const inputNames = new Set(inputs.variables.map(variable => variable.name));
@@ -190,6 +205,10 @@ export class Project {
         passContext = this.mergeContexts(passContext, result, inputs, inputNames);
       }
 
+      if (typeof pythonExecutor.solveEquationSystem === 'function') {
+        passContext = await this.solveCoupledEquations(executable, passContext, inputs, inputNames, pythonExecutor);
+      }
+
       known = passContext;
       this.lastSolvePasses = pass;
       const signature = this.contextSignature(known);
@@ -200,6 +219,68 @@ export class Project {
 
     for (const cell of executable) cell.context = this.cloneContext(known);
     this.updatedAt = new Date();
+  }
+
+  private async solveCoupledEquations(
+    executable: (EquationCell | CodeCell)[],
+    context: Context,
+    inputs: Context,
+    inputNames: Set<string>,
+    pythonExecutor: PythonExecutorService
+  ): Promise<Context> {
+    const equations = executable.filter((cell): cell is EquationCell => cell.type === 'equation');
+    if (!equations.length) return context;
+    const codeOutputNames = new Set(executable
+      .filter((cell): cell is CodeCell => cell.type === 'code' && cell.status === 'success')
+      .flatMap(cell => cell.outputs.map(output => output.name)));
+    const known = context.variables
+      .filter(variable => inputNames.has(variable.name) || codeOutputNames.has(variable.name))
+      .filter(variable => variable.values.length === 1)
+      .map(variable => ({ name: variable.name, value: variable.values[0] }));
+    const result = await pythonExecutor.solveEquationSystem({
+      equations: equations.map(cell => ({ id: cell.id, title: cell.title, latex: cell.latex })),
+      known,
+      targets: this.solverTargets
+    });
+    this.solveDiagnostics = result.diagnostics;
+
+    const blockedVariables = new Set(result.blockedVariables || []);
+    const blockedCells = new Set(result.blockedCells || []);
+    const usableContext: Context = {
+      variables: context.variables.filter(variable =>
+        !blockedVariables.has(variable.name) || inputNames.has(variable.name) || codeOutputNames.has(variable.name))
+    };
+
+    const knownUnits = new Map(context.variables.map(variable => [variable.name, variable.unit || '']));
+    const solvedNames = Object.keys(result.variables);
+    for (let pass = 0; pass < solvedNames.length * 2; pass++) {
+      let changed = false;
+      for (const name of solvedNames) {
+        if (knownUnits.get(name)) continue;
+        for (const cell of equations) {
+          const inferred = inferEquationUnit(cell.latex, name, knownUnits);
+          if (inferred) {
+            knownUnits.set(name, inferred);
+            changed = true;
+            break;
+          }
+        }
+      }
+      if (!changed) break;
+    }
+
+    for (const cell of equations) {
+      if (result.solutionsByCell[cell.id]?.length) cell.solutions = result.solutionsByCell[cell.id];
+      else if (blockedCells.has(cell.id)) cell.solutions = [];
+    }
+    const solved: Context = {
+      variables: solvedNames.map(name => Variable.createNumerical(
+        name,
+        [result.variables[name].value],
+        knownUnits.get(name) || ''
+      ))
+    };
+    return this.mergeContexts(usableContext, solved, inputs, inputNames);
   }
 
   private flattenExecutableCells(cells: Cell[]): (EquationCell | CodeCell)[] {
@@ -531,6 +612,7 @@ export interface SerializableProject {
   name: string;
   description?: string;
   parameters?: EngineeringParameter[];
+  solverTargets?: SolverTarget[];
   cells: SerializableCell[];
   createdAt: string;
   updatedAt: string;

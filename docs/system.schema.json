@@ -15,6 +15,21 @@
       "type": "array",
       "items": { "$ref": "#/$defs/parameter" }
     },
+    "solverTargets": {
+      "type": "array",
+      "description": "Optional solution settings. Names are canonical variable identifiers; numeric fields are strings or blank.",
+      "items": {
+        "type": "object",
+        "required": ["name", "guess", "min", "max"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+          "guess": { "type": "string" },
+          "min": { "type": "string" },
+          "max": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
     "cells": {
       "type": "array",
       "items": { "$ref": "#/$defs/cell" }

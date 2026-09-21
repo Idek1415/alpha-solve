@@ -67,4 +67,51 @@ describe('Project dependency convergence', () => {
     expect(first.context?.variables.find(variable => variable.name === 'force')?.unit).toBe('N');
     expect(later.context?.variables.find(variable => variable.name === 'force')?.unit).toBe('N');
   });
+
+  it('adds coupled-system results to the shared context and preserves solver settings', async () => {
+    const project = new Project('Coupled system');
+    const first = CellSerializer.createEquationCell('x+y=3');
+    const second = CellSerializer.createEquationCell('x-y=1');
+    project.cells = [first, second];
+    project.solverTargets = [{ name: 'x', guess: '2', min: '0', max: '10' }];
+    const executor = {
+      getAvailableProcMacros: () => [],
+      getAvailableFunctions: () => [],
+      solveEquationSystem: jasmine.createSpy('solveEquationSystem').and.resolveTo({
+        variables: { x: { value: '2', method: 'symbolic' }, y: { value: '1', method: 'symbolic' } },
+        solutionsByCell: { [first.id]: ['x=2'], [second.id]: ['y=1'] },
+        blockedVariables: [], blockedCells: [],
+        diagnostics: []
+      })
+    } as unknown as PythonExecutorService;
+
+    await project.updateContext(first.id, executor);
+
+    expect(first.context?.variables.find(variable => variable.name === 'x')?.values).toEqual(['2']);
+    expect(second.context?.variables.find(variable => variable.name === 'y')?.values).toEqual(['1']);
+    expect(first.solutions).toEqual(['x=2']);
+    expect((executor.solveEquationSystem as jasmine.Spy).calls.mostRecent().args[0].targets)
+      .toEqual(project.solverTargets);
+    expect(Project.fromString(project.toString()).solverTargets).toEqual(project.solverTargets);
+  });
+
+  it('removes a stale plugin answer when the coupled solver finds ambiguity', async () => {
+    const project = new Project('Ambiguous system');
+    const cell = CellSerializer.createEquationCell('x^2=4');
+    cell.solutions = ['x=2'];
+    project.cells = [cell];
+    const context = { variables: [Variable.createNumerical('x', ['2'])] };
+    const executor = {
+      solveEquationSystem: async () => ({
+        variables: {}, solutionsByCell: {}, blockedVariables: ['x'],
+        blockedCells: [cell.id], diagnostics: ['multiple solutions']
+      })
+    } as unknown as PythonExecutorService;
+
+    const result = await (project as any).solveCoupledEquations([cell], context, { variables: [] }, new Set(), executor);
+
+    expect(result.variables).toEqual([]);
+    expect(cell.solutions).toEqual([]);
+    expect(project.solveDiagnostics).toEqual(['multiple solutions']);
+  });
 });

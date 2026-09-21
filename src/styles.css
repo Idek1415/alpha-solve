@@ -154,3 +154,115 @@ select {
   background: #f4fbf7;
   border-color: #85ad98;
 }
+
+.solver-settings {
+  flex: 0 0 auto;
+  max-height: min(30vh, 240px);
+  overflow: auto;
+  border-top: 1px solid #30363d;
+  border-bottom: 1px solid #30363d;
+  color: #a7b4be;
+}
+
+.solver-settings summary {
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.solver-settings summary span {
+  float: right;
+}
+
+.solver-settings-body {
+  padding: 0 7px 9px;
+}
+
+.solver-settings-body p {
+  margin: 3px 2px 8px;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.solver-target-head,
+.solver-target-row {
+  display: grid;
+  grid-template-columns: minmax(60px, 1.2fr) repeat(3, minmax(44px, 1fr)) 18px;
+  gap: 3px;
+  align-items: center;
+}
+
+.solver-target-head {
+  font-size: 9px;
+  color: #84929e;
+}
+
+.solver-target-row {
+  margin: 4px 0;
+}
+
+.solver-target-row input {
+  width: 100%;
+  min-width: 0;
+  padding: 4px;
+  border: 1px solid #46525f;
+  border-radius: 3px;
+  color: #e0e8ee;
+  background: #1b232a;
+  font-size: 10px;
+}
+
+.solver-target-row button,
+.add-solver-target {
+  color: inherit;
+  background: #28323c;
+  border: 1px solid #46525f;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.add-solver-target {
+  width: 100%;
+  padding: 5px;
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+.solver-diagnostics {
+  margin-bottom: 10px;
+  padding: 9px 11px;
+  border: 1px solid #a07536;
+  border-radius: 5px;
+  color: #f0d5a8;
+  background: #3b3022;
+  font-size: 11px;
+}
+
+.solver-diagnostics p {
+  margin: 5px 0 0;
+}
+
+.application-shell.light-theme .solver-settings {
+  color: #384d5d;
+  border-color: #c1cbd2;
+}
+
+.application-shell.light-theme .solver-target-row input {
+  color: #20313e;
+  background: #fff;
+  border-color: #aebdc6;
+}
+
+.application-shell.light-theme .solver-target-row button,
+.application-shell.light-theme .add-solver-target {
+  color: #234157;
+  background: #e5eef4;
+  border-color: #aebfc9;
+}
+
+.application-shell.light-theme .solver-diagnostics {
+  color: #5c421d;
+  background: #fff3da;
+  border-color: #c5a365;
+}

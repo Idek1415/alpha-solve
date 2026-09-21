@@ -27,6 +27,20 @@ export interface CodeCellExecutionResult {
   context: Context;
 }
 
+export interface SystemSolveResult {
+  variables: Record<string, { value: string; method: 'symbolic' | 'numerical' }>;
+  solutionsByCell: Record<string, string[]>;
+  blockedVariables: string[];
+  blockedCells: string[];
+  diagnostics: string[];
+}
+
+export interface SystemSolveInput {
+  equations: Array<{ id: string; title: string; latex: string }>;
+  known: Array<{ name: string; value: string }>;
+  targets: Array<{ name: string; guess: string; min: string; max: string }>;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -55,7 +69,7 @@ export class PythonExecutorService {
     this.functionPluginMap.clear();
 
     // Collect all Python libraries from plugins
-    const librariesToLoad = new Set<string>();
+    const librariesToLoad = new Set<string>(['sympy']);
     for (const plugin of plugins) {
       if (plugin.pythonLibraries) {
         for (const lib of plugin.pythonLibraries) {
@@ -111,6 +125,8 @@ export class PythonExecutorService {
         }
       }
     }
+
+    await this.loadSystemSolver();
 
     // Create plugins directory if it doesn't exist
     try {
@@ -245,6 +261,29 @@ if '/' not in sys.path:
       console.error('Failed to load sympy_tools library:', error);
       throw error;
     }
+  }
+
+  private async loadSystemSolver(): Promise<void> {
+    if (!this.pyodide) return;
+    const response = await fetch('/python/system_solver.py');
+    if (!response.ok) throw new Error(`Failed to fetch system_solver.py: ${response.statusText}`);
+    this.pyodide.FS.writeFile('/system_solver.py', await response.text());
+  }
+
+  async solveEquationSystem(input: SystemSolveInput): Promise<SystemSolveResult> {
+    if (!this.isInitialized || !this.pyodide) throw new Error('Python executor is not initialized.');
+    this.pyodide.globals.set('system_solve_input_json', JSON.stringify(input));
+    const code = `
+import json
+from system_solver import solve_system
+json.dumps(solve_system(json.loads(system_solve_input_json)))
+    `;
+    let result = JSON.parse(await this.pyodide.runPythonAsync(code));
+    if (result.needsScipy) {
+      await this.pyodide.loadPackage('scipy');
+      result = JSON.parse(await this.pyodide.runPythonAsync(code));
+    }
+    return result as SystemSolveResult;
   }
 
   /**
