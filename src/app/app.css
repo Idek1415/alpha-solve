@@ -1169,7 +1169,7 @@ button {
 }
 .project-tab { display: flex; margin: 5px 8px; gap: 4px; }
 .project-tab button { padding: 7px; text-align: left; }
-.project-tab button:last-child { flex: 1; overflow-wrap: anywhere; }
+.project-tab .project-name { min-width: 0; flex: 1; overflow-wrap: anywhere; }
 .current-project { background: #29485d !important; color: white !important; }
 .drag-handle { cursor: grab !important; font-size: 19px; padding: 0 5px; }
 .card-header { gap: 7px; }

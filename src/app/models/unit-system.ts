@@ -1,3 +1,5 @@
+import { normalizeCompositeGreekLatex } from './variable-references';
+
 export type Dimensions = [number, number, number, number, number, number, number];
 
 interface UnitValue {
@@ -129,11 +131,11 @@ export function sameDimensions(left: string, right: string): boolean {
 }
 
 function normalizeLatexExpression(latex: string): string {
-  let value = latex
+  let value = normalizeCompositeGreekLatex(latex)
     .replace(/\\operatorname\{([^{}]+)\}/g, '$1')
     .replace(/\\mathrm\{([^{}]+)\}/g, '$1')
     .replace(/_\{([^{}]+)\}/g, '_$1')
-    .replace(/\\(alpha|beta|gamma|delta|epsilon|varepsilon|zeta|eta|theta|vartheta|iota|kappa|lambda|mu|nu|xi|rho|sigma|tau|upsilon|phi|varphi|chi|psi|omega)(?![A-Za-z])/g, '$1')
+    .replace(/\\(alpha|beta|gamma|delta|epsilon|varepsilon|zeta|eta|theta|vartheta|iota|kappa|lambda|mu|nu|xi|rho|sigma|tau|upsilon|phi|varphi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega)(?![A-Za-z])/g, '$1')
     .replace(/\\pi(?![A-Za-z])/g, 'pi')
     .replace(/\\left|\\right/g, '')
     .replace(/\\cdot|\\times/g, '*')

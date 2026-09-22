@@ -208,6 +208,30 @@ def _latex_to_sympy_str(latex: str) -> str:
     # MathQuill may emit square grouping brackets; SymPy needs parentheses.
     latex = latex.replace('[', '(').replace(']', ')')
 
+    # Adjacent Greek and Latin text is one engineering identifier. The editor
+    # requires explicit multiplication, so \Delta R means DeltaR while
+    # \Delta\cdot R remains a product.
+    greek_commands = [
+        'varepsilon', 'vartheta', 'varsigma', 'varphi', 'varrho', 'varpi',
+        'epsilon', 'upsilon', 'omicron', 'lambda', 'alpha', 'gamma', 'delta',
+        'theta', 'kappa', 'sigma', 'omega', 'beta', 'zeta', 'iota', 'rho',
+        'phi', 'chi', 'psi', 'eta', 'mu', 'nu', 'xi', 'tau', 'pi',
+        'Upsilon', 'Gamma', 'Delta', 'Theta', 'Lambda', 'Sigma', 'Omega',
+        'Xi', 'Pi', 'Phi', 'Psi'
+    ]
+    greek_variants = {
+        'varepsilon': 'epsilon', 'vartheta': 'theta', 'varsigma': 'sigma',
+        'varphi': 'phi', 'varrho': 'rho', 'varpi': 'pi'
+    }
+    composite_greek = re.compile(
+        r'\\(' + '|'.join(greek_commands) +
+        r')\s*([A-Za-z][A-Za-z0-9]*(?:_\{[^{}]+\}|_[A-Za-z0-9]+)?)'
+    )
+    latex = composite_greek.sub(
+        lambda match: greek_variants.get(match.group(1), match.group(1)) + match.group(2),
+        latex
+    )
+
     # Handle subscripts with braces first: x_{11} -> x_11, v_{\alpha} -> v_\alpha
     latex = re.sub(r'_\{([^{}]*)\}', r'_\1', latex)
 

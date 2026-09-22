@@ -10,9 +10,20 @@ const GREEK_UNICODE: Record<string, string> = {
 const GREEK_VARIANTS: Record<string, string> = {
   varepsilon: 'epsilon', vartheta: 'theta', varpi: 'pi', varrho: 'rho', varsigma: 'sigma', varphi: 'phi'
 };
+const GREEK_COMMANDS = [...GREEK, ...Object.keys(GREEK_VARIANTS)].sort((left, right) => right.length - left.length);
+const COMPOSITE_GREEK = new RegExp(
+  `\\\\(${GREEK_COMMANDS.join('|')})\\s*([A-Za-z][A-Za-z0-9]*(?:_\\{[^{}]+\\}|_[A-Za-z0-9]+)?)`,
+  'g'
+);
+
+/** In Alpha Solve, adjacent letters form one engineering identifier; multiplication is explicit. */
+export function normalizeCompositeGreekLatex(latex: string): string {
+  return latex.replace(COMPOSITE_GREEK, (_whole, greek: string, suffix: string) =>
+    `${GREEK_VARIANTS[greek] || greek}${suffix}`);
+}
 
 export function canonicalVariableName(latex: string): string {
-  let name = latex.trim();
+  let name = normalizeCompositeGreekLatex(latex).trim();
   for (const [symbol, canonical] of Object.entries(GREEK_UNICODE)) name = name.replaceAll(symbol, canonical);
   name = name
     .replace(/\\operatorname\{([^{}]+)\}/g, '$1')
@@ -26,7 +37,7 @@ export function canonicalVariableName(latex: string): string {
 
 /** Extract canonical names without treating x as a reference to x_0 or xy. */
 export function equationIdentifiers(latex: string): Set<string> {
-  let source = latex;
+  let source = normalizeCompositeGreekLatex(latex);
   for (const [symbol, canonical] of Object.entries(GREEK_UNICODE)) source = source.replaceAll(symbol, canonical);
   for (let pass = 0; pass < 3; pass++) {
     source = source.replace(/\\(?:operatorname|mathrm|mathit|text)\s*\{([^{}]*)\}/g, '$1');

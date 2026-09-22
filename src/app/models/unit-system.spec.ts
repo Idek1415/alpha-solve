@@ -70,4 +70,10 @@ describe('engineering unit system', () => {
       new Map([['A_ox', 'm^2'], ['D_p', 'm']])
     )).toBe('m');
   });
+
+  it('treats adjacent Greek and Latin text as one engineering variable', () => {
+    expect(inferEquationUnit('v=\\frac{\\Delta R}{T}', 'v', new Map([
+      ['DeltaR', 'm'], ['T', 's']
+    ]))).toBe('m/s');
+  });
 });

@@ -118,6 +118,32 @@ export class App implements OnDestroy {
     this.touch(true);
   }
 
+  protected deleteProject(project: Workspace, event?: MouseEvent): void {
+    event?.stopPropagation();
+    this.syncProjects();
+    const current = this.projects();
+    if (current.length === 1) {
+      this.showMessage('At least one project must remain open.');
+      return;
+    }
+    const index = current.findIndex(candidate => candidate.id === project.id);
+    if (index < 0) return;
+    const remaining = current.filter(candidate => candidate.id !== project.id);
+    this.projects.set(remaining);
+    this.collapsed.update(collapsed => {
+      const next = new Set(collapsed);
+      next.delete(project.id);
+      return next;
+    });
+    if (this.workspace().id === project.id) {
+      this.workspace.set(remaining[Math.min(index, remaining.length - 1)]);
+      this.selectedCellId.set(null);
+      this.resetHistory();
+    }
+    this.touch(true);
+    this.showMessage(`${project.name} deleted`);
+  }
+
   private syncProjects(): void {
     this.projects.update(projects => projects.map(p => p.id === this.workspace().id ? this.workspace() : p));
   }
@@ -232,6 +258,13 @@ export class App implements OnDestroy {
       { label: 'Duplicate system', run: () => this.duplicateSystem(system) },
       { label: 'Export system JSON', run: () => this.exportSystem(system) },
       { label: 'Delete system', run: () => this.deleteSystem(system), disabled: this.workspace().systems.length === 1, danger: true }
+    ]);
+  }
+
+  protected projectContextMenu(event: MouseEvent, project: Workspace): void {
+    this.showContextMenu(event, project.name, [
+      { label: 'Open project', run: () => this.activateProject(project) },
+      { label: 'Delete project', run: () => this.deleteProject(project), disabled: this.projects().length === 1, danger: true }
     ]);
   }
 
@@ -607,7 +640,10 @@ export class App implements OnDestroy {
     const separator = name.indexOf('_');
     const base = separator < 0 ? name : name.slice(0, separator);
     const greek = new Set(['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta', 'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi', 'omicron', 'pi', 'rho', 'sigma', 'tau', 'upsilon', 'phi', 'chi', 'psi', 'omega', 'Gamma', 'Delta', 'Theta', 'Lambda', 'Xi', 'Pi', 'Sigma', 'Phi', 'Psi', 'Omega']);
-    const displayBase = greek.has(base) ? `\\${base}` : base;
+    const prefix = [...greek].sort((left, right) => right.length - left.length)
+      .find(candidate => base.startsWith(candidate) &&
+        (base.length === candidate.length || /^[A-Z]/.test(base.slice(candidate.length))));
+    const displayBase = prefix ? `\\${prefix}${base.slice(prefix.length) ? ` ${base.slice(prefix.length)}` : ''}` : base;
     if (separator < 0) return displayBase;
     return `${displayBase}_{${name.slice(separator + 1)}}`;
   }
@@ -827,10 +863,10 @@ export class App implements OnDestroy {
       },
       variableLabeling: {
         identifierPattern: '^[A-Za-z][A-Za-z0-9_]*$', caseSensitive: true,
-        canonicalExamples: ['x', 'x_0', 'omega_n', 'sigma_max', 'TMR', 'P_c'],
+        canonicalExamples: ['x', 'x_0', 'omega_n', 'sigma_max', 'DeltaR', 'TMR', 'P_c'],
         invalidExamples: ['x 0', 'mass-flow', '2theta', 'x₀'],
         subscripts: 'Store x subscript 0 as x_0. In LaTeX, x_0 or x_{0} both map to canonical x_0.',
-        greekNames: 'Store Greek labels as ASCII names: omega_n, alpha, sigma_max. The UI renders recognized Greek names mathematically.',
+        greekNames: 'Store Greek labels as ASCII names: omega_n, alpha, sigma_max, and DeltaR for the compound label ΔR. Adjacent Greek and Latin text is one identifier; use explicit multiplication when they are separate variables.',
         acronymsAndWords: 'Multi-letter names such as TMR and mass are one variable. Never concatenate names to imply multiplication.',
         equationReferences: 'Equations and Python arguments must exactly match parameter or computed-output spelling and capitalization.',
         multiplication: 'Always use \\cdot or \\times between variables. Example: F=m\\cdot a.'

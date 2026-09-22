@@ -40,6 +40,15 @@ class ParserAudit(unittest.TestCase):
         with self.assertRaises(ValueError):
             from_latex(r'\unknown{x}')
 
+    def test_adjacent_greek_and_latin_text_is_one_engineering_identifier(self):
+        self.assertEqual(from_latex(r'\Delta R'), Symbol('DeltaR'))
+        self.assertEqual(from_latex(r'\DeltaR'), Symbol('DeltaR'))
+        self.assertEqual(from_latex(r'\Delta\cdot R'), Symbol('Delta') * Symbol('R'))
+        result = system(r'alpha=\frac{\Delta R}{R_0\cdot T}', known=[
+            {'name': 'DeltaR', 'value': '2.1'}, {'name': 'R_0', 'value': '69.6'},
+            {'name': 'T', 'value': '216'}])
+        self.assertAlmostEqual(float(result['variables']['alpha']['value']), 2.1 / 69.6 / 216)
+
     def test_prime_derivative_retains_function_dependence(self):
         self.assertNotEqual(from_latex("y'").doit(), 0)
 

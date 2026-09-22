@@ -183,4 +183,35 @@ describe('App', () => {
     expect(system.parameters.map((parameter: any) => parameter.name)).toEqual(['a']);
     expect(app.missingVariablesFor(force)).toEqual([]);
   });
+
+  it('suggests a composite Greek variable as one input even when its Latin suffix exists', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    const system = app.activeSystem();
+    const equation = CellSerializer.createEquationCell('alpha=\\frac{\\Delta R}{R_0\\cdot T}');
+    system.parameters = [
+      { id: 'r', name: 'R', value: '2.1', unit: 'm', description: '', kind: 'input', valueType: 'numerical' },
+      { id: 'r0', name: 'R_0', value: '69.6', unit: 'm', description: '', kind: 'input', valueType: 'numerical' },
+      { id: 't', name: 'T', value: '216', unit: 's', description: '', kind: 'input', valueType: 'numerical' }
+    ];
+    system.cells = [equation];
+    app.revision.update((value: number) => value + 1);
+    expect(app.missingVariablesFor(equation)).toEqual(['DeltaR']);
+    app.addSuggestedParameter('DeltaR');
+    expect(system.parameters.at(-1).name).toBe('DeltaR');
+    expect(app.variableNameLatex('DeltaR')).toBe('\\Delta R');
+  });
+
+  it('deletes the selected project and keeps another project active', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    const original = app.workspace();
+    app.newWorkspace();
+    const added = app.workspace();
+    app.deleteProject(added);
+    expect(app.projects().map((project: any) => project.id)).toEqual([original.id]);
+    expect(app.workspace().id).toBe(original.id);
+    app.deleteProject(original);
+    expect(app.projects().length).toBe(1);
+  });
 });

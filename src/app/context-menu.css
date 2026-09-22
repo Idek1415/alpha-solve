@@ -28,3 +28,6 @@
 .light-theme .context-menu button:hover:not(:disabled), .light-theme .context-menu button:focus-visible,
 .light-theme .references-body > button:hover, .light-theme .references-body > button:focus-visible { background: #d9e5ed; }
 .light-theme .references-body > button, .light-theme .references-dialog header button { color: #20262c; background: #eef2f4; border-color: #b9c0c5; }
+.project-tab .project-delete { flex: 0 0 29px; text-align: center; color: #a88181; }
+.project-tab .project-delete:hover:not(:disabled) { color: #fff; background: #7b3438; border-color: #a34e53; }
+.project-tab .project-delete:disabled { opacity: .35; cursor: default; }

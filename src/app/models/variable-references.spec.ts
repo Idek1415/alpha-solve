@@ -44,6 +44,11 @@ describe('variable references', () => {
     expect(canonicalVariableName('ρ_{ox}')).toBe('rho_ox');
     expect(canonicalVariableName('\\varphi')).toBe('phi');
     expect(equationIdentifiers('F=\\rho_{ox}\\cdot A').has('rho_ox')).toBeTrue();
+    expect(canonicalVariableName('\\Delta R')).toBe('DeltaR');
+    expect(canonicalVariableName('\\DeltaR')).toBe('DeltaR');
+    const composite = equationIdentifiers('a=\\frac{\\Delta R}{R_0}');
+    expect(composite.has('DeltaR')).toBeTrue();
+    expect(composite.has('Delta')).toBeFalse();
   });
 
   it('recognizes future Python inputs and declared outputs without running code', () => {
