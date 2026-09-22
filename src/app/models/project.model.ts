@@ -188,13 +188,21 @@ export class Project {
     this.solveDiagnostics = [];
 
     const ordered = [...executable.slice(startIndex), ...executable.slice(0, startIndex)];
-    const inputs = parametersToContext(this.parameters);
+    let inputs = parametersToContext(this.parameters);
+    if (inputs.variables.length && typeof pythonExecutor.resolveComputedValues === 'function') {
+      const resolvedInputs = await pythonExecutor.resolveComputedValues({
+        variables: inputs.variables, solutionsByCell: {}
+      });
+      inputs = { variables: resolvedInputs.variables.map(variable => Variable.fromJSON(variable)) };
+    }
     const inputNames = new Set(inputs.variables.map(variable => variable.name));
     let known = inputs;
     let previousSignature = this.contextSignature(known);
     const seen = new Set([previousSignature]);
     const maxPasses = Math.min(20, Math.max(3, executable.length * 2));
     this.lastSolvePasses = 0;
+    let converged = false;
+    let repeated = false;
 
     for (let pass = 1; pass <= maxPasses; pass++) {
       let passContext = known;
@@ -203,6 +211,11 @@ export class Project {
           ? await this.updateCellContext(cell, passContext, pythonExecutor)
           : await this.updateCodeCellContext(cell, passContext, pythonExecutor);
         passContext = this.mergeContexts(passContext, result, inputs, inputNames);
+        if (cell.type === 'code' && cell.status === 'error') {
+          const invalidOutputs = new Set(cell.outputs.map(output => output.name));
+          passContext.variables = passContext.variables.filter(variable =>
+            inputNames.has(variable.name) || !invalidOutputs.has(variable.name));
+        }
       }
 
       if (typeof pythonExecutor.solveEquationSystem === 'function') {
@@ -224,9 +237,16 @@ export class Project {
       known = passContext;
       this.lastSolvePasses = pass;
       const signature = this.contextSignature(known);
-      if (signature === previousSignature || seen.has(signature)) break;
+      if (signature === previousSignature) { converged = true; break; }
+      if (seen.has(signature)) { repeated = true; break; }
       seen.add(signature);
       previousSignature = signature;
+    }
+
+    if (!converged) {
+      this.solveDiagnostics.push(repeated
+        ? 'Dependency values cycle between states; the displayed values have not converged.'
+        : 'Dependency pass limit reached; the displayed values have not converged.');
     }
 
     for (const cell of executable) cell.context = this.cloneContext(known);
@@ -328,7 +348,7 @@ export class Project {
 
   private contextSignature(context: Context): string {
     return JSON.stringify([...context.variables]
-      .map(variable => [variable.name, variable.type, [...variable.values], variable.unit])
+      .map(variable => [variable.name, variable.type, [...variable.values].sort(), variable.unit])
       .sort(([left], [right]) => String(left).localeCompare(String(right))));
   }
 
@@ -383,6 +403,9 @@ export class Project {
    * Runs all applicable macros sequentially in priority order
    */
   private async runProcMacros(cell: EquationCell, inputContext: Context, pythonExecutor: PythonExecutorService): Promise<EquationCell> {
+    // Root lists do not encode correlated solution branches. Passing them to
+    // macros that take values[0] silently selects an arbitrary branch.
+    inputContext = this.singleValuedContext(inputContext);
     // Get all available proc macros
     const availableMacros = pythonExecutor.getAvailableProcMacros();
 
@@ -463,6 +486,10 @@ export class Project {
    * Returns the new context after processing this cell
    */
   private async updateCellContext(cell: EquationCell, inputContext: Context, pythonExecutor: PythonExecutorService): Promise<Context> {
+    // The analytical plugin takes Cartesian products of root lists. Keep
+    // those roots in the shared context, but leave branch selection to the
+    // coupled solver; a scalar plugin only receives unambiguous substitutions.
+    inputContext = this.singleValuedContext(inputContext);
     // Step 1: Run proc macros to potentially modify cell content
     const modifiedCell = await this.runProcMacros(cell, inputContext, pythonExecutor);
 
@@ -570,7 +597,7 @@ export class Project {
         // Update visible solutions if provided
         if (cellResult.visibleSolutions?.length) {
           const isOnlyConfirmation = cellResult.visibleSolutions.length > 0 &&
-            cellResult.visibleSolutions.every(solution => /^(?:\$\$)?\s*(?:True|False)\s*(?:\$\$)?$/i.test(solution));
+            cellResult.visibleSolutions.every(solution => /^(?:\$\$)?\s*True\s*(?:\$\$)?$/i.test(solution));
           if (!isOnlyConfirmation || !cell.solutions?.length) {
             cell.solutions = cellResult.visibleSolutions;
           }
@@ -584,6 +611,10 @@ export class Project {
     }
 
     return inputContext;
+  }
+
+  private singleValuedContext(context: Context): Context {
+    return { variables: context.variables.filter(variable => variable.values.length === 1) };
   }
 
   /**

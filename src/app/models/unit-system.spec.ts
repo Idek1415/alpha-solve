@@ -1,6 +1,30 @@
-import { inferEquationUnit, normalizeValueToSI, parseUnit, sameDimensions } from './unit-system';
+import { formatDimensions, inferEquationUnit, normalizeValueToSI, parseUnit, sameDimensions } from './unit-system';
 
 describe('engineering unit system', () => {
+  it('round-trips compound denominators and fractional dimensions', () => {
+    for (const text of ['kg/(m*s^2)', '1/m/s', 'm^(1/2)', 'kg*m^-2*s^-1']) {
+      const parsed = parseUnit(text)!;
+      expect(parsed).not.toBeNull();
+      expect(parseUnit(formatDimensions(parsed.dimensions))?.dimensions).toEqual(parsed.dimensions);
+    }
+    expect(sameDimensions('kg/(m*s^2)', 'Pa')).toBeTrue();
+    expect(parseUnit('m/')).toBeNull();
+    expect(parseUnit('m**s')).toBeNull();
+  });
+
+  it('converts angle and mass scales without converting a missing input to zero', () => {
+    expect(normalizeValueToSI('180', 'deg').value).toBe(String(Math.PI));
+    expect(normalizeValueToSI('1000', 'g')).toEqual({ value: '1', unit: 'kg' });
+    expect(normalizeValueToSI('', 'mm').value).toBe('');
+  });
+
+  it('infers dimensions through nested and indexed roots and negative powers', () => {
+    expect(inferEquationUnit('L=\\sqrt[3]{V}', 'L', new Map([['V', 'm^3']]))).toBe('m');
+    expect(inferEquationUnit('r=\\frac{1}{\\sqrt{A}}', 'r', new Map([['A', 'm^2']]))).toBe('1/m');
+    expect(inferEquationUnit('r=x^{-2}', 'r', new Map([['x', 'm']]))).toBe('1/m^2');
+    expect(inferEquationUnit('x=0.5\\cdot y', 'x', new Map([['y', 'm']]))).toBe('m');
+    expect(inferEquationUnit('x=\\bogus{y}', 'x', new Map([['y', 'm']]))).toBe('');
+  });
   it('normalizes prefixed SI inputs', () => {
     expect(normalizeValueToSI('210', 'GPa')).toEqual({ value: '210000000000', unit: 'Pa' });
     expect(normalizeValueToSI('25', 'mm')).toEqual({ value: '0.025', unit: 'm' });

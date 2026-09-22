@@ -4,6 +4,55 @@ import { Project } from './project.model';
 import { PythonExecutorService } from '../services/python-executor.service';
 
 describe('Project dependency convergence', () => {
+  it('keeps branch lists without passing Cartesian root combinations to scalar plugins', async () => {
+    const project = new Project('Root branches');
+    const root = CellSerializer.createEquationCell('x^2=4');
+    const dependent = CellSerializer.createEquationCell('y=x+1');
+    project.cells = [root, dependent];
+    const executor = {
+      getAvailableProcMacros: () => [],
+      getAvailableFunctions: () => [{ functionName: 'solve' }],
+      callMetaFunction: async () => ({ result: { index: 0, useResult: true } }),
+      callFunction: async (_name: string, input: any) => {
+        expect(input.context.variables.every((v: Variable) => v.values.length === 1)).toBeTrue();
+        const value = input.cell.id === root.id
+          ? Variable.createNumerical('x', ['-2', '2']) : Variable.createAnalytical('y', ['x + 1']);
+        return { result: { newContext: { variables: [value] } } };
+      }
+    } as unknown as PythonExecutorService;
+    await project.updateContext(root.id, executor);
+    expect(dependent.context?.variables.find(v => v.name === 'x')?.values).toEqual(['-2', '2']);
+    expect(dependent.context?.variables.find(v => v.name === 'y')?.values).toEqual(['x + 1']);
+  });
+
+  it('reports oscillating dependencies rather than claiming convergence', async () => {
+    const project = new Project('Cycle');
+    const cell = CellSerializer.createCodeCell('toggle');
+    project.cells = [cell];
+    const executor = {
+      executeCodeCell: async (_source: string, context: { variables: Variable[] }) => {
+        const value = context.variables[0]?.values[0] === '0' ? '1' : '0';
+        return { functionName: 'toggle', stdout: '', outputs: [{ name: 'x', value, unit: '' }],
+          context: { variables: [Variable.createNumerical('x', [value])] } };
+      }
+    } as unknown as PythonExecutorService;
+    await project.updateContext(cell.id, executor);
+    expect(project.solveDiagnostics.some(diagnostic => diagnostic.includes('not converged'))).toBeTrue();
+  });
+
+  it('does not hide an equation check that returns False', async () => {
+    const project = new Project('Contradiction');
+    const cell = CellSerializer.createEquationCell('x=2');
+    cell.solutions = ['x=2'];
+    const executor = {
+      getAvailableProcMacros: () => [],
+      getAvailableFunctions: () => [{ functionName: 'check' }],
+      callMetaFunction: async () => ({ result: { index: 0, useResult: true } }),
+      callFunction: async () => ({ result: { visibleSolutions: ['False'] } })
+    } as unknown as PythonExecutorService;
+    await (project as any).updateCellContext(cell, { variables: [] }, executor);
+    expect(cell.solutions).toEqual(['False']);
+  });
   it('feeds values from later cells back into earlier dependent cells', async () => {
     const project = new Project('Convergence test');
     const earlier = CellSerializer.createCodeCell('needs_b');

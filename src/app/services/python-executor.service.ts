@@ -589,6 +589,9 @@ namespace = {}
 exec(compile(tree, "<alpha-solve-code-cell>", "exec"), namespace)
 function = namespace[function_name]
 context_data = json.loads(code_cell_context_json)
+from sympy import Symbol
+context_symbols = {variable["name"]: Symbol(variable["name"])
+                   for variable in context_data.get("variables", [])}
 
 def parse_value(variable):
     values = variable.get("values", [])
@@ -602,7 +605,7 @@ def parse_value(variable):
         except (ValueError, SyntaxError):
             try:
                 from sympy import sympify
-                parsed.append(sympify(value))
+                parsed.append(sympify(value, locals=context_symbols))
             except Exception:
                 parsed.append(value)
     return parsed[0] if len(parsed) == 1 else parsed

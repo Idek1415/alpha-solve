@@ -25,7 +25,9 @@ const UNITS: Record<string, UnitValue> = {
   W: unit([2, 1, -3, 0, 0, 0, 0]),
   C: unit([0, 0, 1, 1, 0, 0, 0]),
   V: unit([2, 1, -3, -1, 0, 0, 0]),
-  rad: unit(zero())
+  rad: unit(zero()),
+  deg: unit(zero(), Math.PI / 180),
+  g: unit([0, 1, 0, 0, 0, 0, 0], 1e-3)
 };
 
 const PREFIXES: Record<string, number> = {
@@ -53,25 +55,54 @@ function atomicUnit(symbol: string): UnitValue | null {
 export function parseUnit(text: string): UnitValue | null {
   const normalized = text.trim().replace(/[·⋅]/g, '*').replace(/²/g, '^2').replace(/³/g, '^3').replace(/\s+/g, '');
   if (!normalized) return unit(zero());
-  const parts = normalized.split(/([*/])/).filter(Boolean);
-  let result = unit(zero());
-  let direction = 1;
-  for (const part of parts) {
-    if (part === '*') { direction = 1; continue; }
-    if (part === '/') { direction = -1; continue; }
-    const match = part.match(/^([A-Za-zµ]+)(?:\^?(-?\d+))?$/);
-    if (!match) return null;
-    const atom = atomicUnit(match[1]);
-    if (!atom) return null;
-    result = multiply(result, atom, direction * Number(match[2] || 1));
-  }
-  return result;
+  const source = normalized.replace(/([A-Za-zµ]+)(-?\d+)/g, '$1^$2');
+  const tokens = source.match(/[A-Za-zµ]+|(?:\d+(?:\.\d*)?|\.\d+)|[()^*/+-]/g) || [];
+  if (tokens.join('') !== source) return null;
+  let index = 0;
+  const factor = (): UnitValue | null => {
+    const token = tokens[index++];
+    let value: UnitValue | null;
+    if (token === '(') {
+      value = product();
+      if (tokens[index++] !== ')') return null;
+    } else {
+      value = token === '1' ? unit(zero()) : token ? atomicUnit(token) : null;
+    }
+    if (!value) return null;
+    if (tokens[index] === '^') {
+      index++;
+      const grouped = tokens[index] === '(';
+      if (grouped) index++;
+      let sign = 1;
+      if (tokens[index] === '-' || tokens[index] === '+') sign = tokens[index++] === '-' ? -1 : 1;
+      let power = sign * Number(tokens[index++]);
+      if (grouped && tokens[index] === '/') {
+        index++;
+        power /= Number(tokens[index++]);
+      }
+      if (!Number.isFinite(power) || (grouped && tokens[index++] !== ')')) return null;
+      value = unit(value.dimensions.map(dimension => dimension * power) as Dimensions, value.scale ** power);
+    }
+    return value;
+  };
+  const product = (): UnitValue | null => {
+    let value = factor();
+    while (tokens[index] === '*' || tokens[index] === '/') {
+      const direction = tokens[index++] === '*' ? 1 : -1;
+      const right = factor();
+      if (!value || !right) return null;
+      value = multiply(value, right, direction);
+    }
+    return value;
+  };
+  const result = product();
+  return index === tokens.length ? result : null;
 }
 
 export function normalizeValueToSI(value: string, unitText: string): { value: string; unit: string } {
   const parsed = parseUnit(unitText);
   const numeric = Number(value);
-  if (!parsed || !Number.isFinite(numeric) || parsed.scale === 1) return { value, unit: unitText };
+  if (!value.trim() || !parsed || !Number.isFinite(numeric) || parsed.scale === 1) return { value, unit: unitText };
   return { value: String(numeric * parsed.scale), unit: formatDimensions(parsed.dimensions) };
 }
 
@@ -89,7 +120,7 @@ export function formatDimensions(dimensions: Dimensions): string {
     target.push(`${bases[index]}${magnitude === 1 ? '' : `^${magnitude}`}`);
   });
   const top = numerator.join('·') || '1';
-  return denominator.length ? `${top}/${denominator.join('·')}` : (top === '1' ? '' : top);
+  return denominator.length ? `${top}/${denominator.join('/')}` : (top === '1' ? '' : top);
 }
 
 export function sameDimensions(left: string, right: string): boolean {
@@ -106,15 +137,20 @@ function normalizeLatexExpression(latex: string): string {
     .replace(/\\pi(?![A-Za-z])/g, 'pi')
     .replace(/\\left|\\right/g, '')
     .replace(/\\cdot|\\times/g, '*')
-    .replace(/\[|\]/g, match => match === '[' ? '(' : ')')
     .replace(/\\[,;:!]/g, '')
     .replace(/\s+/g, '');
-  for (let index = 0; index < 20 && value.includes('\\frac'); index++) {
-    const next = value.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '(($1)/($2))');
+  // Peel off innermost groups irrespective of whether a fraction or radical
+  // encloses the other. Flatten exponent braces as part of the same pass.
+  for (let index = 0; index < 100; index++) {
+    const next = value
+      .replace(/\^\{([^{}]+)\}/g, '^($1)')
+      .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '(($1)/($2))')
+      .replace(/\\sqrt(?:\[(\d+)\])?\{([^{}]+)\}/g, (_match, degree, body) =>
+        Number(degree || 2) > 0 ? `((${body})^(${1 / Number(degree || 2)}))` : '\\invalid');
     if (next === value) break;
     value = next;
   }
-  value = value.replace(/\\sqrt\{([^{}]+)\}/g, '(($1)^(0.5))').replace(/[{}]/g, match => match === '{' ? '(' : ')');
+  value = value.replace(/[{}\[\]]/g, match => match === '{' || match === '[' ? '(' : ')');
   return value;
 }
 
@@ -169,9 +205,16 @@ class DimensionExpressionParser {
     let value = this.primary();
     if (this.peek() === '^') {
       this.index++;
-      if (this.peek() === '(') this.index++;
-      const exponent = Number(this.tokens[this.index++]);
-      if (this.peek() === ')') this.index++;
+      const grouped = this.peek() === '(';
+      if (grouped) this.index++;
+      let sign = 1;
+      if (this.peek() === '-' || this.peek() === '+') sign = this.tokens[this.index++] === '-' ? -1 : 1;
+      let exponent = sign * Number(this.tokens[this.index++]);
+      if (grouped && this.peek() === '/') {
+        this.index++;
+        exponent /= Number(this.tokens[this.index++]);
+      }
+      if (grouped && this.tokens[this.index++] !== ')') return null;
       if (!value || !Number.isFinite(exponent)) return null;
       value = {
         dimensions: value.dimensions.map(item => item * exponent) as Dimensions,
@@ -187,14 +230,14 @@ class DimensionExpressionParser {
     if (token === '+' || token === '-') return this.primary();
     if (token === '(') {
       const value = this.sum();
-      if (this.peek() === ')') this.index++;
+      if (this.tokens[this.index++] !== ')') return null;
       return value;
     }
-    if (/^\d/.test(token) || token === 'pi' || token === 'e') return { dimensions: zero(), targetPower: 0 };
+    if (/^(?:\d|\.\d)/.test(token) || token === 'pi' || token === 'e') return { dimensions: zero(), targetPower: 0 };
     if (/^(sin|cos|tan|log|ln|exp)$/.test(token) && this.peek() === '(') {
       this.index++;
       const argument = this.sum();
-      if (this.peek() === ')') this.index++;
+      if (this.tokens[this.index++] !== ')') return null;
       if (!argument) return null;
       this.constraints.push([argument, { dimensions: zero(), targetPower: 0 }]);
       return { dimensions: zero(), targetPower: 0 };
@@ -202,7 +245,7 @@ class DimensionExpressionParser {
     if (token === 'abs' && this.peek() === '(') {
       this.index++;
       const argument = this.sum();
-      if (this.peek() === ')') this.index++;
+      if (this.tokens[this.index++] !== ')') return null;
       return argument;
     }
     if (token === this.targetName) return { dimensions: zero(), targetPower: 1 };
@@ -224,8 +267,10 @@ export function inferEquationUnit(latex: string, variableName: string, knownUnit
   });
   units.delete(variableName);
 
-  const tokenize = (expression: string): string[] =>
-    expression.match(/[A-Za-z][A-Za-z0-9_]*|(?:\d+(?:\.\d+)?|\.\d+)|[()+\-*/^]/g) || [];
+  const tokenize = (expression: string): string[] => {
+    const tokens = expression.match(/[A-Za-z][A-Za-z0-9_]*|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[()+\-*/^]/g) || [];
+    return tokens.join('') === expression ? tokens : [];
+  };
   const leftParser = new DimensionExpressionParser(tokenize(equation[0]), units, variableName);
   const rightParser = new DimensionExpressionParser(tokenize(equation[1]), units, variableName);
   const left = leftParser.parse(), right = rightParser.parse();

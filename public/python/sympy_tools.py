@@ -6,11 +6,11 @@ This module is automatically loaded when a plugin uses the 'sympy' library.
 """
 
 import re
-from sympy import sympify, symbols, Eq, sqrt, sin, cos, tan, ln, log, exp, pi, E, Derivative, Integral, Symbol
+from sympy import sympify, symbols, Eq, sqrt, sin, cos, tan, ln, log, exp, pi, E, Derivative, Integral, Symbol, Function, real_root, root
 from sympy.parsing.sympy_parser import parse_expr, standard_transformations, implicit_multiplication_application
 
 
-def from_latex(latex_str: str):
+def from_latex(latex_str: str, evaluate=True):
     """
     Convert a LaTeX string to a SymPy expression.
     Custom parser that handles common LaTeX math notation without antlr4.
@@ -34,9 +34,9 @@ def from_latex(latex_str: str):
 
     # Preserve named variables emitted by MathQuill rather than splitting
     # e.g. "mass" into m*a*s*s during implicit multiplication parsing.
-    named_variables = re.findall(r'\\operatorname\{([A-Za-z][A-Za-z0-9_]*)\}', latex_str)
+    named_variables = re.findall(r'\\(?:operatorname|mathrm)\{([A-Za-z][A-Za-z0-9_]*)\}', latex_str)
     local_dict = {name: Symbol(name) for name in named_variables}
-    latex_str = re.sub(r'\\operatorname\{([A-Za-z][A-Za-z0-9_]*)\}', r'\1', latex_str)
+    latex_str = re.sub(r'\\(?:operatorname|mathrm)\{([A-Za-z][A-Za-z0-9_]*)\}', r'\1', latex_str)
     # Convert LaTeX to Python-like expression
     expr_str = _latex_to_sympy_str(latex_str)
     # Every non-function identifier is a single engineering symbol. This makes
@@ -44,20 +44,86 @@ def from_latex(latex_str: str):
     # (x\cdot y), so "xy" intentionally means the variable named xy.
     reserved_names = {
         'sqrt', 'sin', 'cos', 'tan', 'ln', 'log', 'exp',
-        'Derivative', 'Integral', 'Eq', 'pi', 'True', 'False'
+        'Derivative', 'Integral', 'Eq', 'pi', 'True', 'False',
+        'Abs', 'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh', 'engineering_root', 'EulerConstant', 'oo'
     }
+    local_dict.update({'engineering_root': _engineering_root, 'EulerConstant': E})
+    for name in re.findall(r'\b([A-Za-z][A-Za-z0-9_]*)\(', expr_str):
+        if name not in reserved_names:
+            local_dict[name] = Function(name)
     for name in re.findall(r'\b[A-Za-z][A-Za-z0-9_]*\b', expr_str):
         if name not in reserved_names:
             local_dict.setdefault(name, Symbol(name))
 
     # Check if it's an equation (contains =)
+    if expr_str.count('=') > 1:
+        raise ValueError('Use one equals sign per equation.')
     if '=' in expr_str:
         parts = expr_str.split('=', 1)
-        left = parse_expr(parts[0], local_dict=local_dict, transformations=(standard_transformations + (implicit_multiplication_application,)))
-        right = parse_expr(parts[1], local_dict=local_dict, transformations=(standard_transformations + (implicit_multiplication_application,)))
+        left = parse_expr(parts[0], local_dict=local_dict, transformations=(standard_transformations + (implicit_multiplication_application,)), evaluate=evaluate)
+        right = parse_expr(parts[1], local_dict=local_dict, transformations=(standard_transformations + (implicit_multiplication_application,)), evaluate=evaluate)
         return Eq(left, right, evaluate=False)
     else:
-        return parse_expr(expr_str, local_dict=local_dict, transformations=(standard_transformations + (implicit_multiplication_application,)))
+        return parse_expr(expr_str, local_dict=local_dict, transformations=(standard_transformations + (implicit_multiplication_application,)), evaluate=evaluate)
+
+
+def _engineering_root(value, degree):
+    """Indexed odd roots of real inputs use the real branch; square roots are principal."""
+    degree = sympify(degree)
+    if not degree.is_Integer or degree <= 0:
+        raise ValueError('A root index must be a positive integer.')
+    return real_root(value, degree) if degree % 2 else root(value, degree)
+
+
+def _group(text, start, opening='{', closing='}'):
+    while start < len(text) and text[start].isspace():
+        start += 1
+    if start >= len(text) or text[start] != opening:
+        raise ValueError('Expected a grouped argument.')
+    depth = 1
+    for end in range(start + 1, len(text)):
+        if text[end] == opening:
+            depth += 1
+        elif text[end] == closing:
+            depth -= 1
+            if depth == 0:
+                return text[start + 1:end], end + 1
+    raise ValueError('Unclosed mathematical group.')
+
+
+def _expand_roots_and_fractions(text):
+    """Read balanced groups, so radicals and fractions may nest in either order."""
+    match = re.search(r'\\(frac|dfrac|tfrac|sqrt)(?![A-Za-z])', text)
+    if not match:
+        return text
+    position = match.end()
+    if match.group(1) == 'sqrt':
+        while position < len(text) and text[position].isspace():
+            position += 1
+        degree = None
+        if position < len(text) and text[position] == '[':
+            degree, position = _group(text, position, '[', ']')
+        body, end = _group(text, position)
+        body = _expand_roots_and_fractions(body)
+        replacement = 'sqrt(%s)' % body if degree is None else 'engineering_root((%s),(%s))' % (body, degree)
+    else:
+        numerator, position = _group(text, position)
+        denominator, end = _group(text, position)
+        differential = re.fullmatch(r'd(?:\^\{?(\d+)\}?)?([A-Za-z])', numerator.strip())
+        independent = re.fullmatch(r'd([A-Za-z])(?:\^\{?(\d+)\}?)?', denominator.strip())
+        if differential and independent:
+            order = int(differential.group(1) or 1)
+            if order != int(independent.group(2) or 1):
+                raise ValueError('Derivative orders in numerator and denominator must match.')
+            name, variable = differential.group(2), independent.group(1)
+            replacement = ('Derivative(%s,%s,%d)' % (name, variable, order) if name == variable
+                           else 'Derivative(%s(%s),%s,%d)' % (name, variable, variable, order))
+        else:
+            replacement = '((%s)/(%s))' % (_expand_roots_and_fractions(numerator), _expand_roots_and_fractions(denominator))
+    # Spaces keep generated function names separate from preceding LaTeX
+    # commands. Otherwise \cdot\sqrt became \cdotsqrt, and inserting '*' in
+    # front of sqrt then changed multiplication to Python exponentiation '**'.
+    return text[:match.start()] + ' ' + replacement + ' ' + _expand_roots_and_fractions(text[end:])
 
 
 def _handle_derivatives(latex: str) -> str:
@@ -75,11 +141,15 @@ def _handle_derivatives(latex: str) -> str:
         num_primes = len(primes)
 
         if num_primes == 1:
-            return f"Derivative({var_name}, t)"
+            return f"Derivative({var_name}(t), t)"
         else:
-            return f"Derivative({var_name}, t, {num_primes})"
+            return f"Derivative({var_name}(t), t, {num_primes})"
 
-    return re.sub(pattern, replace_prime, latex)
+    names = {match.group(1) for match in re.finditer(pattern, latex)}
+    latex = re.sub(pattern, replace_prime, latex)
+    for name in names:
+        latex = re.sub(r'\b' + re.escape(name) + r'\b(?!\s*\()', name + '(t)', latex)
+    return latex
 
 
 def _handle_integrals(latex: str) -> str:
@@ -90,35 +160,36 @@ def _handle_integrals(latex: str) -> str:
     - \int f(x) dx -> Integral(f(x), x)
     - ∫ (unicode) also supported
     """
-    # Replace unicode integral symbol with \int
     latex = latex.replace('∫', r'\int')
-
-    # Pattern for definite integral: \int_{lower}^{upper} ... d{var}
-    # This is complex because the integrand can contain nested expressions
-    # We'll use a simpler approach: find \int, find the d{var} at the end, extract everything
-
-    # First, handle definite integrals: \int_a^b or \int_{a}^{b}
-    definite_pattern = r'\\int_\{?([^{}^]+)\}?\^\{?([^{}]+)\}?\s*(.*?)\s*d([a-zA-Z])'
-
-    def replace_definite(match):
-        lower = match.group(1).strip()
-        upper = match.group(2).strip()
-        integrand = match.group(3).strip()
-        var = match.group(4)
-        return f"Integral({integrand}, ({var}, {lower}, {upper}))"
-
-    latex = re.sub(definite_pattern, replace_definite, latex)
-
-    # Then handle indefinite integrals: \int ... dx
-    indefinite_pattern = r'\\int\s+(.*?)\s*d([a-zA-Z])'
-
-    def replace_indefinite(match):
-        integrand = match.group(1).strip()
-        var = match.group(2)
-        return f"Integral({integrand}, {var})"
-
-    latex = re.sub(indefinite_pattern, replace_indefinite, latex)
-
+    while True:
+        match = re.search(r'\\int(?![A-Za-z])', latex)
+        if not match:
+            break
+        position = match.end()
+        bounds = {}
+        while position < len(latex) and latex[position].isspace():
+            position += 1
+        while position < len(latex) and latex[position] in '_^':
+            kind = latex[position]
+            position += 1
+            if position < len(latex) and latex[position] == '{':
+                bounds[kind], position = _group(latex, position)
+            elif position < len(latex):
+                bounds[kind], position = latex[position], position + 1
+            else:
+                raise ValueError('Missing integral bound.')
+        if bounds and set(bounds) != {'_', '^'}:
+            raise ValueError('A definite integral needs both bounds.')
+        differential = re.search(r'd\s*([A-Za-z])(?![A-Za-z0-9_])', latex[position:])
+        if not differential:
+            raise ValueError('An integral needs an explicit differential such as dx.')
+        body = latex[position:position + differential.start()].strip()
+        if not body or r'\int' in body:
+            raise ValueError('Use one complete integral at a time.')
+        variable = differential.group(1)
+        limit = '(%s,%s,%s)' % (variable, bounds['_'], bounds['^']) if bounds else variable
+        end = position + differential.end()
+        latex = latex[:match.start()] + 'Integral(%s,%s)' % (body, limit) + latex[end:]
     return latex
 
 
@@ -126,11 +197,11 @@ def _latex_to_sympy_str(latex: str) -> str:
     """
     Convert LaTeX math notation to a SymPy-parseable string.
     """
+    latex = _expand_roots_and_fractions(latex)
+    for name, variable in re.findall(r'Derivative\(([A-Za-z])\(([A-Za-z])\)', latex):
+        latex = re.sub(r'\b' + name + r'\b(?!\s*\()', name + '(' + variable + ')', latex)
     # Handle integrals before other transformations
     latex = _handle_integrals(latex)
-
-    # Handle derivatives (prime notation) before other transformations
-    latex = _handle_derivatives(latex)
 
     # Remove \left, \right, and other formatting commands
     latex = re.sub(r'\\left|\\right', '', latex)
@@ -144,21 +215,12 @@ def _latex_to_sympy_str(latex: str) -> str:
     # This way v_\alpha becomes v_alpha before we process fractions
     greek_letters = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta',
                      'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi', 'omicron', 'pi', 'rho',
-                     'sigma', 'tau', 'upsilon', 'phi', 'chi', 'psi', 'omega']
+                     'sigma', 'tau', 'upsilon', 'phi', 'chi', 'psi', 'omega',
+                     'varepsilon', 'vartheta', 'varpi', 'varrho', 'varsigma', 'varphi',
+                     'Gamma', 'Delta', 'Theta', 'Lambda', 'Xi', 'Pi', 'Sigma', 'Upsilon', 'Phi', 'Psi', 'Omega']
     for letter in greek_letters:
-        latex = latex.replace(f'\\{letter}', letter)
-
-    # Replace fractions from the inside out. Doing this before roots supports
-    # common nested input such as \sqrt{\frac{k}{m}}.
-    # Limit iterations to prevent infinite loops
-    for _ in range(100):
-        if r'\frac' not in latex:
-            break
-        latex = re.sub(r'\\frac\{([^{}]*)\}\{([^{}]*)\}', r'((\1)/(\2))', latex)
-
-    # Replace square roots after their nested fractions have been flattened.
-    latex = re.sub(r'\\sqrt\{([^{}]*)\}', r'sqrt(\1)', latex)
-    latex = re.sub(r'([a-zA-Z0-9_])sqrt\(', r'\1*sqrt(', latex)
+        latex = re.sub(r'\\' + letter + r'(?![A-Za-z])', letter, latex)
+    latex = _handle_derivatives(latex)
 
     # Replace exponents: ^ -> **
     latex = latex.replace('^', '**')
@@ -171,19 +233,19 @@ def _latex_to_sympy_str(latex: str) -> str:
     latex = latex.replace(r'\times', '*')
 
     # Handle common functions
-    latex = re.sub(r'\\sin', 'sin', latex)
-    latex = re.sub(r'\\cos', 'cos', latex)
-    latex = re.sub(r'\\tan', 'tan', latex)
-    latex = re.sub(r'\\ln', 'ln', latex)
-    latex = re.sub(r'\\log', 'log', latex)
-    latex = re.sub(r'\\exp', 'exp', latex)
+    for function in ('sin', 'cos', 'tan', 'ln', 'log', 'exp', 'sinh', 'cosh', 'tanh', 'arcsin', 'arccos', 'arctan'):
+        latex = re.sub(r'\\' + function + r'(?![A-Za-z])', function.replace('arc', 'a'), latex)
 
     # Handle constants (pi was already handled with Greek letters)
     latex = latex.replace('π', 'pi')
-    latex = re.sub(r'\\e\b', 'E', latex)
+    latex = re.sub(r'\\e\b', 'EulerConstant', latex)
+    latex = re.sub(r'\\infty\b', 'oo', latex)
 
-    # Remove remaining backslashes for any other cases
-    latex = re.sub(r'\\([a-zA-Z]+)', r'\1', latex)
+    latex = re.sub(r'\\[,;:! ]', ' ', latex)
+    if '\\' in latex:
+        raise ValueError('Unsupported LaTeX command; the expression was not evaluated.')
+    latex = re.sub(r'\|([^|]+)\|', r'Abs(\1)', latex)
+    latex = latex.replace('{', '(').replace('}', ')')
 
     # Clean up spaces
     latex = latex.strip()
