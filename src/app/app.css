@@ -865,7 +865,7 @@ button {
 .parameter-row {
   min-width: 292px;
   display: grid;
-  grid-template-columns: 58px minmax(82px, 1fr) 54px 45px 22px;
+  grid-template-columns: 76px minmax(82px, 1fr) 54px 45px 22px;
 }
 
 .parameter-table-head {
@@ -903,12 +903,16 @@ button {
   font-size: 11px;
 }
 
+.parameter-name-cell { min-width: 0; display: flex; align-items: center; border-right: 1px solid #30363c; }
 .parameter-row .parameter-name-editor {
   color: #8fc3df;
   font-family: Consolas, monospace;
   min-width: 0;
-  border-right: 1px solid #30363c;
+  flex: 1;
 }
+.parameter-row .usage-count { flex: 0 0 auto; margin-right: 3px; padding: 1px 3px; border: 0; border-radius: 3px;
+  color: #95b9ce; background: #2b3a45; font: 9px Consolas, monospace; }
+.parameter-row .usage-count:hover { color: #fff; background: #3c5870; }
 
 .parameter-row .parameter-value {
   color: #edf0f3;
@@ -1195,6 +1199,7 @@ button {
 .light-theme .math-result, .light-theme .output-value, .light-theme .execution-time,
 .light-theme .empty-result { color: #34434e; }
 .light-theme .variable-math-name { color: #704f8d; }
+.light-theme .parameter-row .usage-count { color: #315a72; background: #dbe7ee; }
 .light-theme .unit-input { color: #34434e; background: #fff; border-color: #aeb8c0; }
 .light-theme .parameter-table-head, .light-theme .computed-table-head { color: #394751; background: #e4e7e9; }
 .light-theme .parameter-row, .light-theme .computed-row, .light-theme .computed-list { border-color: #c8cdd1; }

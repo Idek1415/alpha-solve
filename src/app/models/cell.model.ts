@@ -38,6 +38,7 @@ export interface FolderCell extends BaseCell {
  */
 export interface NoteCell extends BaseCell {
   type: 'note';
+  title: string;
   content: string;
 }
 
@@ -124,7 +125,7 @@ export class CellSerializer {
           cells: cell.cells.map((c) => CellSerializer.serialize(c)),
         };
       case 'note':
-        return { ...base, content: cell.content };
+        return { ...base, title: cell.title, content: cell.content };
       case 'code':
         return {
           ...base,
@@ -174,6 +175,7 @@ export class CellSerializer {
         return {
           ...base,
           type: 'note',
+          title: data.title || 'Engineering note',
           content: data.content || '',
         };
       case 'code':
@@ -232,6 +234,7 @@ export class CellSerializer {
     return {
       id: crypto.randomUUID(),
       type: 'note',
+      title: 'Engineering note',
       content,
       createdAt: new Date(),
       updatedAt: new Date(),

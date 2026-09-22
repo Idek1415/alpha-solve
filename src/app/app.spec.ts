@@ -99,4 +99,60 @@ describe('App', () => {
     expect(payload.valueEntry.valuesAreStrings).toBeTrue();
     expect(payload.system.format).toBe('alpha-solve/system');
   });
+
+  it('adds a calculation at the right-clicked workspace position and supports undo', () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    const app = fixture.componentInstance as any;
+    const before = app.activeSystem().cells.map((cell: any) => cell.id);
+    const workspace = fixture.nativeElement.querySelector('.cards-scroll') as HTMLElement;
+    workspace.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 0 }));
+    fixture.detectChanges();
+    const addButton = Array.from(fixture.nativeElement.querySelectorAll('.context-menu button') as NodeListOf<HTMLButtonElement>)
+      .find(button => button.textContent?.includes('Add equation'))!;
+    addButton.click();
+    expect(app.activeSystem().cells[0].type).toBe('equation');
+    expect(app.activeSystem().cells.slice(1).map((cell: any) => cell.id)).toEqual(before);
+    app.undo();
+    expect(app.activeSystem().cells.map((cell: any) => cell.id)).toEqual(before);
+  });
+
+  it('finds exact input usages and jumps to the selected card', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    const system = app.activeSystem();
+    const displacement = system.parameters.find((parameter: any) => parameter.name === 'x_0');
+    app.findVariableReferences(displacement.name, 'input');
+    expect(app.variableReferences().usages.length).toBe(1);
+    expect(app.variableReferences().usages[0].type).toBe('equation');
+    const cell = app.variableReferences().usages[0];
+    app.revealReference(cell);
+    expect(app.selectedCellId()).toBe(cell.id);
+    expect(app.variableReferences()).toBeNull();
+  });
+
+  it('duplicates systems with distinct system, cell, and parameter identities', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    const original = app.activeSystem();
+    app.duplicateSystem(original);
+    const copy = app.activeSystem();
+    expect(copy.id).not.toBe(original.id);
+    expect(copy.name).toContain('Copy');
+    expect(copy.cells.map((cell: any) => cell.id)).not.toEqual(original.cells.map((cell: any) => cell.id));
+    expect(copy.parameters.map((parameter: any) => parameter.id))
+      .not.toEqual(original.parameters.map((parameter: any) => parameter.id));
+    expect(app.workspace().systems.length).toBe(2);
+  });
+
+  it('preserves note titles when a card is duplicated and the workspace is serialized', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    const note = app.activeSystem().cells[0];
+    note.title = 'Assumptions';
+    app.duplicateCell(note);
+    const duplicate = app.activeSystem().cells[1];
+    expect(duplicate.title).toBe('Assumptions Copy');
+    expect(JSON.parse(app.workspace().toString()).systems[0].cells[1].title).toBe('Assumptions Copy');
+  });
 });

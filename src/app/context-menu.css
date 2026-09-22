@@ -1,0 +1,30 @@
+.context-menu { position: fixed; z-index: 120; width: 228px; padding: 5px; border: 1px solid #607183;
+  border-radius: 6px; color: #e0e7ee; background: #26313b; box-shadow: 0 12px 30px #0008; }
+.context-menu-title { padding: 6px 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: #9eafbc; font-size: 11px; border-bottom: 1px solid #46525f; }
+.context-menu button { display: block; width: 100%; padding: 8px 9px; border: 0; border-radius: 3px;
+  color: inherit; background: transparent; text-align: left; cursor: pointer; }
+.context-menu button:hover:not(:disabled), .context-menu button:focus-visible { background: #3c5870; outline: none; }
+.context-menu button:disabled { opacity: .45; cursor: default; }
+.context-menu button.danger { color: #f0aaaa; }
+.references-backdrop { position: fixed; inset: 0; z-index: 110; display: grid; place-items: center;
+  padding: 20px; background: #000a; }
+.references-dialog { width: min(520px, 96vw); max-height: min(70vh, 680px); display: flex; flex-direction: column;
+  border: 1px solid #607183; border-radius: 8px; color: #e0e7ee; background: #1d252d; }
+.references-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 18px; border-bottom: 1px solid #46525f; }
+.references-dialog h2 { margin: 0; font-size: 16px; }
+.references-dialog code { color: #b79bd6; }
+.references-dialog header button { padding: 6px 10px; border: 1px solid #46525f; border-radius: 4px;
+  color: inherit; background: #28323c; cursor: pointer; }
+.references-body { overflow: auto; padding: 8px 18px 18px; }
+.references-body h3 { margin: 14px 0 8px; color: #a9bac7; font-size: 11px; text-transform: uppercase; }
+.references-body > button { display: block; width: 100%; margin: 3px 0; padding: 10px;
+  border: 1px solid #3c4955; border-radius: 4px; color: inherit; background: #28343e; text-align: left; cursor: pointer; }
+.references-body > button:hover, .references-body > button:focus-visible { background: #3c5870; }
+.references-body p { color: #9eafbc; line-height: 1.5; }
+.light-theme .context-menu, .light-theme .references-dialog { color: #20262c; background: #f7f8f8; border-color: #9faab2; }
+.light-theme .context-menu-title, .light-theme .references-dialog header { border-color: #b9c0c5; }
+.light-theme .context-menu button:hover:not(:disabled), .light-theme .context-menu button:focus-visible,
+.light-theme .references-body > button:hover, .light-theme .references-body > button:focus-visible { background: #d9e5ed; }
+.light-theme .references-body > button, .light-theme .references-dialog header button { color: #20262c; background: #eef2f4; border-color: #b9c0c5; }

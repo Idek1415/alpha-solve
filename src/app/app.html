@@ -54,7 +54,7 @@
       <div class="tree-scroll">
         @if (!collapsed().has(workspace().id)) {
         @for (system of workspace().systems; track system.id) {
-          <div class="system-tree" [class.active-system]="activeSystem()?.id === system.id">
+          <div class="system-tree" [class.active-system]="activeSystem()?.id === system.id" (contextmenu)="systemContextMenu($event, system)">
             <button class="system-node" (click)="selectSystem(system.id)">
               <span class="disclosure" (click)="toggleCollapsed(system.id); $event.stopPropagation()">{{ collapsed().has(system.id) ? '›' : '⌄' }}</span>
               <span class="tree-icon system-icon">▱</span>
@@ -126,7 +126,7 @@
           </div>
         </div>
 
-        <div class="cards-scroll">
+        <div class="cards-scroll" (contextmenu)="workspaceContextMenu($event)">
           @if (errorMessage()) {
             <div class="global-error">
               <strong>Runtime error</strong>
@@ -150,6 +150,7 @@
               [class.selected]="selectedCellId() === cell.id"
               [class.note-card]="cell.type === 'note'"
               (click)="selectCell(cell)"
+              (contextmenu)="cellContextMenu($event, cell)"
             >
               <div class="card-header">
                 <button class="drag-handle" draggable="true" (dragstart)="startDrag($event, cell)" title="Drag to reorder calculation" aria-label="Drag to reorder calculation">⠿</button>
@@ -168,8 +169,14 @@
                       (ngModelChange)="asEquation(cell).title = $event; metadataChanged()"
                       aria-label="Equation title"
                     />
+                  } @else if (cell.type === 'note') {
+                    <input
+                      [ngModel]="asNote(cell).title"
+                      (ngModelChange)="asNote(cell).title = $event; metadataChanged()"
+                      aria-label="Note title"
+                    />
                   } @else {
-                    <span>{{ cell.type === 'note' ? 'Engineering note' : 'Folder' }}</span>
+                    <span>Folder</span>
                   }
                 </div>
                 <div class="card-actions">
@@ -291,14 +298,17 @@
             <span>Variable</span><span>Description</span><span>Value</span><span>Unit</span><span></span>
           </div>
           @for (parameter of system.parameters; track parameter.id) {
-            <div class="parameter-row">
-              <app-mathquill-input
-                class="parameter-name-editor"
-                [compact]="true"
-                [ariaLabel]="'Variable name ' + parameter.name"
-                [latex]="variableNameLatex(parameter.name)"
-                (latexChange)="parameterNameChanged(parameter, $event)"
-              />
+            <div class="parameter-row" (contextmenu)="inputContextMenu($event, parameter)" [title]="'Used in ' + (usageCounts().get(parameter.name) || 0) + ' cards. Right-click for actions.'">
+              <div class="parameter-name-cell">
+                <app-mathquill-input
+                  class="parameter-name-editor"
+                  [compact]="true"
+                  [ariaLabel]="'Variable name ' + parameter.name"
+                  [latex]="variableNameLatex(parameter.name)"
+                  (latexChange)="parameterNameChanged(parameter, $event)"
+                />
+                <button class="usage-count" (click)="findVariableReferences(parameter.name, 'input')" [title]="'Show ' + (usageCounts().get(parameter.name) || 0) + ' usages'" [attr.aria-label]="'Show usages of ' + parameter.name">{{ usageCounts().get(parameter.name) || 0 }}</button>
+              </div>
               <input [(ngModel)]="parameter.description" (ngModelChange)="parameterChanged()" aria-label="Description" />
               <input class="parameter-value" [(ngModel)]="parameter.value" (ngModelChange)="parameterChanged()" aria-label="Value" />
               <input class="parameter-unit" [(ngModel)]="parameter.unit" (ngModelChange)="parameterChanged()" aria-label="Unit" />
@@ -334,7 +344,7 @@
           <div class="computed-list">
             <div class="computed-table-head"><span>Variable</span><span>Value</span><span>Unit</span></div>
             @for (variable of computedVariables(); track variable.name) {
-              <div class="computed-row">
+              <div class="computed-row" (contextmenu)="computedContextMenu($event, variable)" title="Right-click for sources and usages">
                 <app-latex-renderer class="variable-math-name" [latex]="variableNameLatex(variable.name)" />
                 <span class="computed-value" tabindex="0" [title]="variable.value" [attr.aria-label]="variable.name + ' value ' + variable.value">{{ variable.value }}</span>
                 <span>{{ variable.unit }}</span>
@@ -357,6 +367,36 @@
   @if (savedPath()) {
     <div class="save-notice" role="status"><strong>File saved</strong><span>{{ savedPath() }}</span><button (click)="savedPath.set('')" aria-label="Dismiss saved file location">×</button></div>
   }
+  @if (contextMenu(); as menu) {
+    <div class="context-menu" role="menu" [style.left.px]="menu.x" [style.top.px]="menu.y" (click)="$event.stopPropagation()">
+      <div class="context-menu-title">{{ menu.title }}</div>
+      @for (action of menu.actions; track action.label) {
+        <button role="menuitem" [disabled]="action.disabled" [class.danger]="action.danger" (click)="activateContextAction(action)">{{ action.label }}</button>
+      }
+    </div>
+  }
+  @if (variableReferences(); as references) {
+    <div class="references-backdrop" (click)="variableReferences.set(null)">
+      <section class="references-dialog" role="dialog" aria-modal="true" aria-labelledby="references-title" (click)="$event.stopPropagation()">
+        <header>
+          <h2 id="references-title">References to <code>{{ references.name }}</code></h2>
+          <button (click)="variableReferences.set(null)" aria-label="Close references">Close</button>
+        </header>
+        <div class="references-body">
+          @if (references.kind === 'computed') {
+            <h3>Produced by or solved in</h3>
+            @for (cell of references.producers; track cell.id) {
+              <button (click)="revealReference(cell)">{{ cellIndex(cell) + 1 }}. {{ cellLabel(cell) }}</button>
+            } @empty { <p>No source card could be identified. The value may come from a coupled equation.</p> }
+          }
+          <h3>{{ references.kind === 'input' ? 'Used in' : 'Used by other cards' }} · {{ references.usages.length }}</h3>
+          @for (cell of references.usages; track cell.id) {
+            <button (click)="revealReference(cell)">{{ cellIndex(cell) + 1 }}. {{ cellLabel(cell) }}</button>
+          } @empty { <p>No cards reference this variable by its current name.</p> }
+        </div>
+      </section>
+    </div>
+  }
   @if (helpOpen()) {
     <div class="help-backdrop" (click)="helpOpen.set(false)">
       <section class="help-dialog" role="dialog" aria-modal="true" aria-labelledby="help-title" (click)="$event.stopPropagation()" (keydown.escape)="helpOpen.set(false)">
@@ -371,7 +411,7 @@
             @case ('Python functions') {<p>Write exactly one Python function. Its arguments match input names or calculated variables from anywhere in the system. Return a dictionary whose keys name the output variables.</p><pre>def calculate(m, k):
     return {{ '{' }}"frequency": (k / m) ** 0.5{{ '}' }}</pre><p>Imports belong inside your function. Print output appears under Console output. Only run code from sources you trust. Runtime packages currently require an internet connection.</p>}
             @case ('Solver capabilities') {<p>The solver groups equations that share unknowns and solves those equations together. Add optional Solver targets in the right panel to specify a variable's initial guess and bounds. If symbolic solving has several valid answers, bounds or guesses select a branch. Numerical solving requires a guess for each unknown in its connected group. The app reports insufficient equations, conflicts, and ambiguous answers above the cards.</p><ul>@for (capability of solverCapabilities; track capability) {<li>{{ capability }}</li>}</ul><p>Input values using recognized SI units and prefixes are normalized to coherent SI before evaluation (for example, GPa to Pa). Derived equation units are inferred where dimensional relationships can be resolved; review complex models before using results.</p>}
-            @case ('Arrange calculations') {<p>Drag the dotted handle at the left of a card onto another card to organize the calculation sequence. The arrow buttons remain available for keyboard users.</p><p>The arrow beside the handle collapses or expands a card. Dependency passes allow values to flow in either direction, while order still controls which calculation runs first. Undo and Redo reverse edits within the active project.</p>}
+            @case ('Arrange calculations') {<p>Drag the dotted handle at the left of a card onto another card to organize the calculation sequence. The arrow buttons remain available for keyboard users.</p><p>Right-click empty space among the cards to add an equation, Python function, or note at that location. Right-click a card to duplicate, rename, run, collapse, add below, or delete it. Right-click a system in Project Explorer for system actions.</p><p>Right-click an input or computed variable to find cards that reference its exact name. Click a result to jump to that card. Normal text editing menus remain available in input fields.</p><p>The arrow beside the handle collapses or expands a card. Dependency passes allow values to flow in either direction, while order still controls which calculation runs first. Undo and Redo reverse edits within the active project.</p>}
             @case ('JSON and LLMs') {<p>Export JSON creates the compact portable system file. LLM JSON creates a self-describing package containing the same system plus exact import shapes, identifier and subscript rules, value/unit-entry rules, dependency behavior, safety guidance, and solver capabilities. Both formats can be imported directly.</p><p>Imported code is not automatically executed. Review it before running. For reliable analysis, ask the LLM to verify assumptions and dimensional consistency rather than treating stored results as authoritative.</p><h4>Current solver capabilities</h4><ul>@for (capability of solverCapabilities; track capability) {<li>{{ capability }}</li>}</ul>}
             @case ('About') {<p>Alpha Solve App</p><p>built on alpha solve by Jack Neeleman (icanthink42)</p><p>This desktop interface uses the existing Alpha Solve analytical solver. The original work provides the foundation for its mathematical capabilities.</p>}
           }

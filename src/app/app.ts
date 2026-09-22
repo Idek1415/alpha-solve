@@ -19,6 +19,7 @@ import {
   createEngineeringParameter
 } from './models';
 import { PythonExecutorService } from './services/python-executor.service';
+import { cellProducesVariable, cellUsesVariable, codeIdentifiers, equationIdentifiers } from './models/variable-references';
 
 interface DisplayVariable {
   name: string;
@@ -27,11 +28,32 @@ interface DisplayVariable {
   type: string;
 }
 
+interface ContextAction {
+  label: string;
+  run: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+}
+
+interface ContextMenuState {
+  title: string;
+  x: number;
+  y: number;
+  actions: ContextAction[];
+}
+
+interface VariableReferences {
+  name: string;
+  kind: 'input' | 'computed';
+  producers: Cell[];
+  usages: Cell[];
+}
+
 @Component({
   selector: 'app-root',
   imports: [CommonModule, FormsModule, MathQuillInputComponent, LatexRendererComponent],
   templateUrl: './app.html',
-  styleUrl: './app.css'
+  styleUrls: ['./app.css', './context-menu.css']
 })
 export class App implements OnDestroy {
   private readonly autosaveKey = 'alpha-solve.workspace.autosave.v5';
@@ -39,6 +61,8 @@ export class App implements OnDestroy {
   protected readonly workspace = signal(this.loadWorkspace());
   protected readonly projects = signal<Workspace[]>(this.loadProjects());
   protected readonly helpOpen = signal(false);
+  protected readonly contextMenu = signal<ContextMenuState | null>(null);
+  protected readonly variableReferences = signal<VariableReferences | null>(null);
   protected readonly helpSection = signal('Getting started');
   protected readonly collapsed = signal<Set<string>>(new Set());
   protected readonly savedPath = signal('');
@@ -105,6 +129,16 @@ export class App implements OnDestroy {
 
   @HostListener('document:keydown', ['$event'])
   protected helpKeyboard(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && this.contextMenu()) {
+      this.contextMenu.set(null);
+      event.preventDefault();
+      return;
+    }
+    if (event.key === 'Escape' && this.variableReferences()) {
+      this.variableReferences.set(null);
+      event.preventDefault();
+      return;
+    }
     if (!this.helpOpen()) return;
     if (event.key === 'Escape') {
       this.helpOpen.set(false);
@@ -119,10 +153,154 @@ export class App implements OnDestroy {
     }
   }
 
+  @HostListener('document:click')
+  protected dismissContextMenu(): void {
+    this.contextMenu.set(null);
+  }
+
+  @HostListener('window:resize')
+  protected onWindowResize(): void {
+    this.contextMenu.set(null);
+  }
+
   protected revealCell(cell: Cell): void {
     this.selectCell(cell);
     if (this.collapsed().has(cell.id)) this.toggleCollapsed(cell.id);
     setTimeout(() => document.getElementById(`cell-${cell.id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+  }
+
+  private showContextMenu(event: MouseEvent, title: string, actions: ContextAction[]): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const width = 228;
+    const height = 35 + actions.length * 34;
+    this.contextMenu.set({
+      title,
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8)),
+      actions
+    });
+    setTimeout(() => document.querySelector<HTMLButtonElement>('.context-menu button')?.focus());
+  }
+
+  protected activateContextAction(action: ContextAction): void {
+    this.contextMenu.set(null);
+    if (!action.disabled) action.run();
+  }
+
+  protected workspaceContextMenu(event: MouseEvent): void {
+    if ((event.target as HTMLElement).closest('button, input, textarea, .calculation-card, .mathquill-input')) return;
+    const cards = Array.from((event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('.calculation-card'));
+    const index = cards.findIndex(card => event.clientY < card.getBoundingClientRect().top + card.getBoundingClientRect().height / 2);
+    const insertAt = index < 0 ? cards.length : index;
+    this.showContextMenu(event, 'Add calculation here', [
+      { label: 'Add equation', run: () => this.addCell('equation', insertAt) },
+      { label: 'Add Python function', run: () => this.addCell('code', insertAt) },
+      { label: 'Add note', run: () => this.addCell('note', insertAt) }
+    ]);
+  }
+
+  protected cellContextMenu(event: MouseEvent, cell: Cell): void {
+    if ((event.target as HTMLElement).closest('input, textarea, .mathquill-input, [contenteditable="true"]')) return;
+    const index = this.cellIndex(cell);
+    this.showContextMenu(event, this.cellLabel(cell), [
+      { label: 'Duplicate card', run: () => this.duplicateCell(cell) },
+      { label: 'Rename card', run: () => this.focusCellTitle(cell) },
+      ...(cell.type === 'equation' || cell.type === 'code'
+        ? [{ label: 'Run from this card', run: () => void this.runFromCell(cell), disabled: this.isRunning() }]
+        : []),
+      { label: this.collapsed().has(cell.id) ? 'Expand card' : 'Collapse card', run: () => this.toggleCollapsed(cell.id) },
+      { label: 'Add equation below', run: () => this.addCell('equation', index + 1) },
+      { label: 'Add Python function below', run: () => this.addCell('code', index + 1) },
+      { label: 'Add note below', run: () => this.addCell('note', index + 1) },
+      { label: 'Delete card', run: () => this.deleteCell(cell), danger: true }
+    ]);
+  }
+
+  protected systemContextMenu(event: MouseEvent, system: Project): void {
+    this.showContextMenu(event, system.name, [
+      { label: 'Open system', run: () => this.selectSystem(system.id) },
+      { label: 'Rename system', run: () => this.focusSystemTitle(system) },
+      { label: 'Duplicate system', run: () => this.duplicateSystem(system) },
+      { label: 'Export system JSON', run: () => this.exportSystem(system) },
+      { label: 'Delete system', run: () => this.deleteSystem(system), disabled: this.workspace().systems.length === 1, danger: true }
+    ]);
+  }
+
+  protected inputContextMenu(event: MouseEvent, parameter: EngineeringParameter): void {
+    if ((event.target as HTMLElement).closest('input, textarea')) return;
+    this.showContextMenu(event, parameter.name, [
+      { label: `Find usages (${this.usageCounts().get(parameter.name) || 0})`, run: () => this.findVariableReferences(parameter.name, 'input') },
+      { label: 'Duplicate input', run: () => this.duplicateParameter(parameter) },
+      { label: 'Copy variable name', run: () => void this.copyText(parameter.name) },
+      { label: 'Delete input', run: () => this.deleteParameter(parameter), danger: true }
+    ]);
+  }
+
+  protected computedContextMenu(event: MouseEvent, variable: DisplayVariable): void {
+    const producers = this.activeSystem()?.cells.filter(cell => cellProducesVariable(cell, variable.name)) || [];
+    this.showContextMenu(event, variable.name, [
+      { label: `Sources and usages (${this.usageCounts().get(variable.name) || 0})`, run: () => this.findVariableReferences(variable.name, 'computed') },
+      { label: 'Jump to source', run: () => this.revealCell(producers[0]), disabled: producers.length !== 1 },
+      { label: 'Copy variable name', run: () => void this.copyText(variable.name) },
+      { label: 'Copy value', run: () => void this.copyText(variable.value) }
+    ]);
+  }
+
+  protected readonly usageCounts = computed(() => {
+    this.revision();
+    const counts = new Map<string, number>();
+    const available = new Set(this.availableVariableNames());
+    for (const cell of this.activeSystem()?.cells || []) {
+      const names = cell.type === 'equation' ? equationIdentifiers(cell.latex)
+        : cell.type === 'code' ? codeIdentifiers(cell.source) : new Set<string>();
+      for (const name of names) {
+        if (available.has(name)) counts.set(name, (counts.get(name) || 0) + 1);
+      }
+    }
+    return counts;
+  });
+
+  protected findVariableReferences(name: string, kind: 'input' | 'computed'): void {
+    const cells = this.activeSystem()?.cells || [];
+    const producers = kind === 'computed' ? cells.filter(cell => cellProducesVariable(cell, name)) : [];
+    this.variableReferences.set({
+      name,
+      kind,
+      producers,
+      usages: cells.filter(cell => cellUsesVariable(cell, name) && (kind === 'input' || !producers.includes(cell)))
+    });
+  }
+
+  protected revealReference(cell: Cell): void {
+    this.variableReferences.set(null);
+    this.revealCell(cell);
+  }
+
+  private async copyText(value: string): Promise<void> {
+    try {
+      let copied = false;
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(value);
+          copied = true;
+        } catch { /* Use the desktop webview's selection-based fallback. */ }
+      }
+      if (!copied) {
+        const input = document.createElement('textarea');
+        input.value = value;
+        input.style.position = 'fixed';
+        input.style.left = '-9999px';
+        document.body.appendChild(input);
+        input.select();
+        copied = document.execCommand('copy');
+        input.remove();
+      }
+      if (!copied) throw new Error('Clipboard is unavailable');
+      this.showMessage('Copied to clipboard');
+    } catch {
+      this.showMessage('Clipboard access is unavailable');
+    }
   }
 
   protected startDrag(event: DragEvent, cell: Cell): void {
@@ -209,8 +387,8 @@ export class App implements OnDestroy {
     this.recordChange('System created');
   }
 
-  protected deleteSystem(system: Project, event: MouseEvent): void {
-    event.stopPropagation();
+  protected deleteSystem(system: Project, event?: MouseEvent): void {
+    event?.stopPropagation();
     if (this.workspace().systems.length === 1) {
       this.showMessage('A workspace must contain at least one system.');
       return;
@@ -223,7 +401,37 @@ export class App implements OnDestroy {
     this.recordChange('System removed');
   }
 
-  protected addCell(type: 'equation' | 'note' | 'code'): void {
+  private focusSystemTitle(system: Project): void {
+    this.selectSystem(system.id);
+    setTimeout(() => {
+      const input = document.querySelector<HTMLInputElement>('.system-title-input');
+      input?.focus();
+      input?.select();
+    });
+  }
+
+  private duplicateSystem(system: Project): void {
+    const copy = system.clone();
+    copy.id = crypto.randomUUID();
+    copy.name = `${system.name} Copy`;
+    copy.solveDiagnostics = [];
+    const refreshIds = (cells: Cell[]): void => {
+      for (const cell of cells) {
+        cell.id = crypto.randomUUID();
+        if (cell.type === 'folder') refreshIds(cell.cells);
+      }
+    };
+    refreshIds(copy.cells);
+    copy.parameters = system.parameters.map(parameter => ({ ...parameter, id: crypto.randomUUID() }));
+    copy.solverTargets = system.solverTargets.map(target => ({ ...target }));
+    const index = this.workspace().systems.indexOf(system);
+    this.workspace().systems.splice(index + 1, 0, copy);
+    this.workspace().activeSystemId = copy.id;
+    this.selectedCellId.set(null);
+    this.recordChange('System duplicated');
+  }
+
+  protected addCell(type: 'equation' | 'note' | 'code', index?: number): void {
     const system = this.activeSystem();
     if (!system) return;
 
@@ -238,10 +446,61 @@ export class App implements OnDestroy {
           '    return {"omega_n": omega_n, "zeta": zeta}'
         );
 
-    system.addCell(cell);
+    if (index === undefined) system.addCell(cell);
+    else system.cells.splice(Math.max(0, Math.min(index, system.cells.length)), 0, cell);
     this.selectedCellId.set(cell.id);
     this.markFromCellStale(cell.id);
     this.recordChange(`${this.cellLabel(cell)} added`);
+    setTimeout(() => document.getElementById(`cell-${cell.id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+  }
+
+  private duplicateCell(cell: Cell): void {
+    const system = this.activeSystem();
+    if (!system) return;
+    const index = system.cells.indexOf(cell);
+    if (index < 0) return;
+    const copy = CellSerializer.deserialize(CellSerializer.serialize(cell));
+    copy.id = crypto.randomUUID();
+    copy.createdAt = new Date();
+    copy.updatedAt = new Date();
+    if (copy.type === 'equation') {
+      copy.title = `${copy.title} Copy`;
+      copy.solutions = [];
+      copy.context = undefined;
+    } else if (copy.type === 'code') {
+      copy.title = `${copy.title} Copy`;
+      copy.outputs = copy.outputs.map(output => ({ ...output, value: '' }));
+      copy.status = 'stale';
+      copy.error = undefined;
+      copy.stdout = '';
+      copy.context = undefined;
+    } else if (copy.type === 'note') copy.title = `${copy.title} Copy`;
+    system.cells.splice(index + 1, 0, copy);
+    this.selectedCellId.set(copy.id);
+    this.markFromCellStale(copy.id);
+    this.recordChange('Card duplicated');
+    setTimeout(() => document.getElementById(`cell-${copy.id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+  }
+
+  private focusCellTitle(cell: Cell): void {
+    this.revealCell(cell);
+    setTimeout(() => {
+      const input = document.querySelector<HTMLInputElement>(`#cell-${cell.id} .card-title input`);
+      input?.focus();
+      input?.select();
+    });
+  }
+
+  private duplicateParameter(parameter: EngineeringParameter): void {
+    const system = this.activeSystem();
+    if (!system) return;
+    let name = `${parameter.name}_copy`;
+    let suffix = 2;
+    while (system.parameters.some(item => item.name === name)) name = `${parameter.name}_copy${suffix++}`;
+    const copy = { ...parameter, id: crypto.randomUUID(), name };
+    const index = system.parameters.indexOf(parameter);
+    system.parameters.splice(index + 1, 0, copy);
+    this.parameterChanged();
   }
 
   protected deleteCell(cell: Cell): void {
@@ -456,8 +715,7 @@ export class App implements OnDestroy {
     });
   }
 
-  protected exportSystem(): void {
-    const system = this.activeSystem();
+  protected exportSystem(system: Project | null = this.activeSystem()): void {
     if (!system) return;
     this.downloadJson(`${this.safeFileName(system.name)}.system.json`, system.toString());
   }
@@ -629,7 +887,7 @@ export class App implements OnDestroy {
   protected cellLabel(cell: Cell): string {
     if (cell.type === 'equation') return cell.title || 'Equation';
     if (cell.type === 'code') return cell.title || 'Python function';
-    if (cell.type === 'note') return 'Note';
+    if (cell.type === 'note') return cell.title || 'Engineering note';
     return cell.name || 'Folder';
   }
 
