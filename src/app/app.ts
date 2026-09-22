@@ -19,7 +19,15 @@ import {
   createEngineeringParameter
 } from './models';
 import { PythonExecutorService } from './services/python-executor.service';
-import { cellProducesVariable, cellUsesVariable, codeIdentifiers, equationIdentifiers } from './models/variable-references';
+import {
+  canonicalVariableName,
+  cellProducesVariable,
+  cellUsesVariable,
+  codeDeclaredOutputs,
+  codeFunctionArguments,
+  codeIdentifiers,
+  equationIdentifiers
+} from './models/variable-references';
 
 interface DisplayVariable {
   name: string;
@@ -372,6 +380,36 @@ export class App implements OnDestroy {
     return [...names];
   }
 
+  protected missingVariablesFor(cell: Cell): string[] {
+    const system = this.activeSystem();
+    if (!system || (cell.type !== 'equation' && cell.type !== 'code')) return [];
+    const known = new Set(system.parameters.map(parameter => parameter.name));
+    for (const target of system.solverTargets) if (target.name) known.add(target.name);
+    for (const candidate of system.cells) {
+      if (candidate.type === 'equation') {
+        const left = candidate.latex.split('=')[0] || '';
+        for (const name of equationIdentifiers(left)) known.add(name);
+      } else if (candidate.type === 'code') {
+        for (const name of codeDeclaredOutputs(candidate)) known.add(name);
+      }
+      if ((candidate.type === 'equation' || candidate.type === 'code') && candidate.context) {
+        for (const variable of candidate.context.variables) known.add(variable.name);
+      }
+    }
+    const referenced = cell.type === 'equation' ? equationIdentifiers(cell.latex) : codeFunctionArguments(cell.source);
+    return [...referenced]
+      .filter(name => name !== 'pi' && !known.has(name))
+      .sort((left, right) => left.localeCompare(right));
+  }
+
+  protected addSuggestedParameter(name: string): void {
+    const system = this.activeSystem();
+    if (!system || system.parameters.some(parameter => parameter.name === name)) return;
+    system.parameters.push(createEngineeringParameter(name, '0', '', 'Added from an equation reference'));
+    this.parameterChanged();
+    this.showMessage(`${name} added as an input parameter`);
+  }
+
   protected toggleTheme(): void {
     this.lightTheme.update(value => !value);
     localStorage.setItem('alpha-solve.theme', this.lightTheme() ? 'light' : 'dark');
@@ -568,19 +606,15 @@ export class App implements OnDestroy {
   protected variableNameLatex(name: string): string {
     const separator = name.indexOf('_');
     const base = separator < 0 ? name : name.slice(0, separator);
-    const greek = new Set(['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta', 'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi', 'omicron', 'pi', 'rho', 'sigma', 'tau', 'upsilon', 'phi', 'chi', 'psi', 'omega']);
+    const greek = new Set(['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta', 'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi', 'omicron', 'pi', 'rho', 'sigma', 'tau', 'upsilon', 'phi', 'chi', 'psi', 'omega', 'Gamma', 'Delta', 'Theta', 'Lambda', 'Xi', 'Pi', 'Sigma', 'Phi', 'Psi', 'Omega']);
     const displayBase = greek.has(base) ? `\\${base}` : base;
     if (separator < 0) return displayBase;
     return `${displayBase}_{${name.slice(separator + 1)}}`;
   }
 
   protected parameterNameChanged(parameter: EngineeringParameter, latex: string): void {
-    const normalized = latex
-      .replace(/\\operatorname\{([^{}]+)\}/g, '$1')
-      .replace(/_\{([^{}]*)\}/g, '_$1')
-      .replace(/[{}\\\s]/g, '')
-      .replace(/[^A-Za-z0-9_]/g, '');
-    if (!normalized || !/^[A-Za-z]/.test(normalized)) return;
+    const normalized = canonicalVariableName(latex);
+    if (!normalized) return;
     parameter.name = normalized;
     this.parameterChanged();
   }

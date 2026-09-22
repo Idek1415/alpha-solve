@@ -199,6 +199,16 @@
                       [latex]="asEquation(cell).latex"
                       (latexChange)="equationChanged(asEquation(cell), $event)"
                     />
+                    @if (missingVariablesFor(cell).length) {
+                      <div class="missing-variables" role="status">
+                        <span>Possible missing inputs</span>
+                        @for (name of missingVariablesFor(cell); track name) {
+                          <button (click)="addSuggestedParameter(name); $event.stopPropagation()" [title]="'Add ' + name + ' as an input parameter'">
+                            ＋ <app-latex-renderer [latex]="variableNameLatex(name)" />
+                          </button>
+                        }
+                      </div>
+                    }
                   </div>
                   <div class="cell-result-pane">
                     <label>Result</label>
@@ -227,6 +237,16 @@
                       [ngModel]="asCode(cell).source"
                       (ngModelChange)="codeChanged(asCode(cell), $event)"
                     ></textarea>
+                    @if (missingVariablesFor(cell).length) {
+                      <div class="missing-variables" role="status">
+                        <span>Possible missing inputs</span>
+                        @for (name of missingVariablesFor(cell); track name) {
+                          <button (click)="addSuggestedParameter(name); $event.stopPropagation()" [title]="'Add ' + name + ' as an input parameter'">
+                            ＋ <app-latex-renderer [latex]="variableNameLatex(name)" />
+                          </button>
+                        }
+                      </div>
+                    }
                   </div>
                   <div class="code-result-pane">
                     <label>Returned variables</label>
@@ -407,7 +427,7 @@
           @switch (helpSection()) {
             @case ('Getting started') {<p>Create a project with New, name its system, and enter inputs in the right panel. Add equation, Python function, or note cards below the calculations.</p><p>Click Run to solve the whole dependency system. Alpha Solve repeats the calculations until the shared variables stop changing, so a calculation can use a value produced by a later card. Results appear alongside each card and in Computed.</p>}
             @case ('Projects and files') {<p>New keeps your other projects in the explorer. Click a project name to switch; use its arrow to collapse or expand its systems. Each project can contain several systems.</p><p>Save writes the active project to an .asolve file. Open starts in Documents → Alpha Solve App and adds the chosen project to your explorer. A persistent notification displays the full saved path.</p><p>Autosave restores open projects on this computer. Save files separately for backups or sharing.</p>}
-            @case ('Equations and variables') {<p>Define named inputs on the right and type those same names directly in equations. Parameter names use a math editor too: type an underscore to create a subscript, such as x_0.</p><p>Example: U = 0.5 × k × x_0². Type * for multiplication, / for fractions, ^ for powers, and _ for subscripts. Use arrow keys to leave a subscript or fraction.</p><p>Inputs and calculated values are shared across all calculations. Alpha Solve repeats dependency passes until no values or units change. Use explicit multiplication between names. Recognized SI input units are normalized and computed units are inferred dimensionally through products, quotients, powers, roots, and dimensionally consistent sums. Blank computed units indicate that the expression or one of its inputs could not be resolved dimensionally.</p>}
+            @case ('Equations and variables') {<p>Define named inputs on the right and type those same names directly in equations. Parameter names use a math editor too: type an underscore to create a subscript, such as x_0. Typed or pasted Greek letters are stored as canonical names, so ρ_ox is shared with rho_ox throughout the system.</p><p>Example: U = 0.5 × k × x_0². Type * for multiplication, / for fractions, ^ for powers, and _ for subscripts. Use arrow keys to leave a subscript or fraction.</p><p>When an equation or Python function references a name that is not an input, solver target, computed value, or output of any current or future card, a Possible missing inputs row appears. Click a variable to add it as an input, or leave it alone if it should remain an unknown. Nothing is added automatically.</p><p>Inputs and calculated values are shared across all calculations. Alpha Solve repeats dependency passes until no values or units change. Use explicit multiplication between names. Recognized SI input units are normalized and computed units are inferred dimensionally through products, quotients, powers, roots, and dimensionally consistent sums. Blank computed units indicate that the expression or one of its inputs could not be resolved dimensionally.</p>}
             @case ('Python functions') {<p>Write exactly one Python function. Its arguments match input names or calculated variables from anywhere in the system. Return a dictionary whose keys name the output variables.</p><pre>def calculate(m, k):
     return {{ '{' }}"frequency": (k / m) ** 0.5{{ '}' }}</pre><p>Imports belong inside your function. Print output appears under Console output. Only run code from sources you trust. Runtime packages currently require an internet connection.</p>}
             @case ('Solver capabilities') {<p>The solver groups equations that share unknowns and solves those equations together. Add optional Solver targets in the right panel to specify a variable's initial guess and bounds. If symbolic solving has several valid answers, bounds or guesses select a branch. Numerical solving requires a guess for each unknown in its connected group. The app reports insufficient equations, conflicts, and ambiguous answers above the cards.</p><ul>@for (capability of solverCapabilities; track capability) {<li>{{ capability }}</li>}</ul><p>Input values using recognized SI units and prefixes are normalized to coherent SI before evaluation (for example, GPa to Pa). Derived equation units are inferred where dimensional relationships can be resolved; review complex models before using results.</p>}

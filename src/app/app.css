@@ -623,6 +623,33 @@ button {
   background: #171c20;
 }
 
+.missing-variables {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  color: #81909b;
+  font-size: 10px;
+}
+
+.missing-variables > span { margin-right: 2px; }
+
+.missing-variables button {
+  min-height: 25px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border: 1px solid #476173;
+  border-radius: 4px;
+  color: #9bc9e3;
+  background: #22323d;
+  cursor: pointer;
+}
+
+.missing-variables button:hover { color: #fff; background: #315166; }
+
 .math-result {
   width: 100%;
   max-width: 100%;
@@ -1195,6 +1222,7 @@ button {
 .light-theme .card-title { color: #17212a; }
 .light-theme .card-number { color: #324654; background: #c7dce9; }
 .light-theme .cell-input-pane app-mathquill-input, .light-theme .code-editor, .light-theme .note-editor { color: #17212a; background: #fff; border-color: #b8c0c6; }
+.light-theme .missing-variables button { color: #285d7c; background: #edf5fa; border-color: #9eb9c9; }
 .light-theme .cell-result-pane, .light-theme .code-result-pane { color: #20262c; background: #f5f7f8; border-color: #c2c7cb; }
 .light-theme .math-result, .light-theme .output-value, .light-theme .execution-time,
 .light-theme .empty-result { color: #34434e; }

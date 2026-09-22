@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { App } from './app';
+import { CellSerializer } from './models';
 
 describe('App', () => {
   beforeEach(async () => {
@@ -154,5 +155,32 @@ describe('App', () => {
     const duplicate = app.activeSystem().cells[1];
     expect(duplicate.title).toBe('Assumptions Copy');
     expect(JSON.parse(app.workspace().toString()).systems[0].cells[1].title).toBe('Assumptions Copy');
+  });
+
+  it('accepts Greek input parameter names and preserves their canonical subscripts', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    const parameter = app.activeSystem().parameters[0];
+    app.parameterNameChanged(parameter, '\\rho_{ox}');
+    expect(parameter.name).toBe('rho_ox');
+    expect(app.variableNameLatex(parameter.name)).toBe('\\rho_{ox}');
+    app.parameterNameChanged(parameter, 'α');
+    expect(parameter.name).toBe('alpha');
+  });
+
+  it('suggests only unresolved inputs and respects outputs from future equations', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    const system = app.activeSystem();
+    const force = CellSerializer.createEquationCell('F=m\\cdot a');
+    const mass = CellSerializer.createEquationCell('m=\\rho\\cdot V');
+    system.parameters = [];
+    system.cells = [force, mass];
+    app.revision.update((value: number) => value + 1);
+    expect(app.missingVariablesFor(force)).toEqual(['a']);
+    expect(app.missingVariablesFor(mass)).toEqual(['rho', 'V']);
+    app.addSuggestedParameter('a');
+    expect(system.parameters.map((parameter: any) => parameter.name)).toEqual(['a']);
+    expect(app.missingVariablesFor(force)).toEqual([]);
   });
 });

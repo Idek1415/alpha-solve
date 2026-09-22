@@ -1,5 +1,13 @@
 import { CellSerializer } from './cell.model';
-import { cellProducesVariable, cellUsesVariable, codeIdentifiers, equationIdentifiers } from './variable-references';
+import {
+  canonicalVariableName,
+  cellProducesVariable,
+  cellUsesVariable,
+  codeDeclaredOutputs,
+  codeFunctionArguments,
+  codeIdentifiers,
+  equationIdentifiers
+} from './variable-references';
 
 describe('variable references', () => {
   it('matches canonical equation names including subscripts without prefix matches', () => {
@@ -29,5 +37,19 @@ describe('variable references', () => {
     expect(cellProducesVariable(cell, 'BF')).toBeFalse();
     cell.solutions = ['BF=0.38/LMR'];
     expect(cellProducesVariable(cell, 'BF')).toBeTrue();
+  });
+
+  it('normalizes typed and pasted Greek parameter names with subscripts', () => {
+    expect(canonicalVariableName('\\rho_{ox}')).toBe('rho_ox');
+    expect(canonicalVariableName('ρ_{ox}')).toBe('rho_ox');
+    expect(canonicalVariableName('\\varphi')).toBe('phi');
+    expect(equationIdentifiers('F=\\rho_{ox}\\cdot A').has('rho_ox')).toBeTrue();
+  });
+
+  it('recognizes future Python inputs and declared outputs without running code', () => {
+    const cell = CellSerializer.createCodeCell('def calculate(rho, A=1):\n    return {"mdot": rho * A}');
+    expect([...codeFunctionArguments(cell.source)]).toEqual(['rho', 'A']);
+    expect(codeDeclaredOutputs(cell).has('mdot')).toBeTrue();
+    expect(cellProducesVariable(cell, 'mdot')).toBeTrue();
   });
 });

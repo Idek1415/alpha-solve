@@ -124,7 +124,7 @@ export class MathQuillInputComponent implements AfterViewInit, OnDestroy, OnChan
 
     this.mathField = MQ.MathField(this.mathquillField.nativeElement, {
       spaceBehavesLikeTab: true,
-      autoCommands: 'pi theta phi sigma alpha beta gamma delta epsilon zeta eta iota kappa lambda mu nu xi omicron rho tau upsilon chi psi omega sqrt sum prod',
+      autoCommands: 'pi theta phi sigma alpha beta gamma delta epsilon varepsilon zeta eta vartheta iota kappa lambda mu nu xi omicron varpi rho varrho varsigma tau upsilon varphi chi psi omega Gamma Delta Theta Lambda Xi Pi Sigma Phi Psi Omega sqrt sum prod',
       autoOperatorNames: this.operatorNames(),
       handlers: {
         edit: () => {
