@@ -22,6 +22,9 @@
       <span class="tool-icon">{{ isRunning() ? '■' : '▶' }}</span>
       <span>{{ isRunning() ? 'Running' : 'Run' }}</span>
     </button>
+    <button class="tool-button" (click)="toggleScientificNotation()" [class.active-tool]="scientificNotation()" title="Toggle scientific notation for numeric results">
+      <span class="tool-icon">10ⁿ</span><span>{{ scientificNotation() ? 'Scientific' : 'Decimal' }}</span>
+    </button>
     <div class="toolbar-spacer"></div>
     <button class="icon-button" (click)="undo()" [disabled]="!canUndo()" title="Undo">↶</button>
     <button class="icon-button" (click)="redo()" [disabled]="!canRedo()" title="Redo">↷</button>
@@ -30,7 +33,7 @@
     <button class="tool-button" (click)="exportLlmSystem()"><span class="tool-icon">◇</span><span>LLM JSON</span></button>
   </div>
 
-  <div class="workspace-grid">
+  <div class="workspace-grid" [style.--left-panel.px]="leftPanelWidth()" [style.--right-panel.px]="rightPanelWidth()">
     <aside class="project-panel panel">
       <div class="panel-heading">
         <span>Project Explorer</span>
@@ -103,6 +106,8 @@
         <button (click)="addSystem()">＋ New system</button>
       </div>
     </aside>
+
+    <div class="panel-splitter vertical" (pointerdown)="startPanelResize('left', $event)" title="Drag to resize Project Explorer"></div>
 
     <main class="calculation-panel panel">
       @if (activeSystem(); as system) {
@@ -192,13 +197,14 @@
 
               @if (!collapsed().has(cell.id)) {
               @if (cell.type === 'equation') {
-                <div class="equation-layout">
+                <div class="equation-layout" [style.--calculation-input]="calculationInputPercent() + '%'">
                   <div class="cell-input-pane">
                     <label>Model equation</label>
                     <app-mathquill-input
                       [variableNames]="availableVariableNames()"
                       [latex]="asEquation(cell).latex"
                       (latexChange)="equationChanged(asEquation(cell), $event)"
+                      (createCellBelow)="addEquationBelow(asEquation(cell))"
                     />
                     @if (missingVariablesFor(cell).length) {
                       <div class="missing-variables" role="status">
@@ -211,11 +217,12 @@
                       </div>
                     }
                   </div>
+                  <div class="cell-splitter" (pointerdown)="startPanelResize('calculation', $event)" title="Drag to resize equation and result"></div>
                   <div class="cell-result-pane">
                     <label>Result</label>
                     @if (asEquation(cell).solutions?.length) {
                       @for (solution of asEquation(cell).solutions; track $index) {
-                        <div class="math-result"><app-latex-renderer [latex]="solution" /></div>
+                        <div class="math-result"><app-latex-renderer [latex]="formatSolutionLatex(solution)" /></div>
                       }
                     } @else {
                       <div class="empty-result">Run the system to calculate</div>
@@ -223,7 +230,7 @@
                   </div>
                 </div>
               } @else if (cell.type === 'code') {
-                <div class="code-layout">
+                <div class="code-layout" [style.--calculation-input]="calculationInputPercent() + '%'">
                   <div class="code-editor-pane">
                     <div class="code-label-row">
                       <label>Python function</label>
@@ -249,6 +256,7 @@
                       </div>
                     }
                   </div>
+                  <div class="cell-splitter" (pointerdown)="startPanelResize('calculation', $event)" title="Drag to resize function and output"></div>
                   <div class="code-result-pane">
                     <label>Returned variables</label>
                     @if (asCode(cell).status === 'running') {
@@ -260,7 +268,7 @@
                         @for (output of asCode(cell).outputs; track output.name) {
                           <div class="output-row">
                             <app-latex-renderer class="variable-math-name" [latex]="variableNameLatex(output.name)" />
-                            <span class="output-value">{{ output.value || '—' }}</span>
+                            <span class="output-value">{{ output.value ? formatDisplayValue(output.value) : '—' }}</span>
                             <input
                               class="unit-input"
                               placeholder="unit"
@@ -306,11 +314,14 @@
       }
     </main>
 
-    <aside class="parameters-panel panel">
+    <div class="panel-splitter vertical" (pointerdown)="startPanelResize('right', $event)" title="Drag to resize Parameters & Variables"></div>
+
+    <aside class="parameters-panel panel" [style.--input-panel]="inputPanelPercent() + '%'">
       <div class="panel-heading">
         <span>Parameters &amp; Variables</span>
       </div>
       @if (activeSystem(); as system) {
+        <div class="parameter-input-section">
         <div class="parameter-section-header">
           <span>Inputs</span><span>{{ system.parameters.length }}</span>
         </div>
@@ -357,6 +368,9 @@
             <button class="add-solver-target" (click)="addSolverTarget()">＋ Add target</button>
           </div>
         </details>
+        </div>
+
+        <div class="panel-splitter horizontal" (pointerdown)="startPanelResize('inputs', $event)" title="Drag to resize inputs and computed outputs"></div>
 
         <div class="parameter-section-header computed-heading">
           <span>Computed</span><span>{{ computedVariables().length }}</span>
@@ -427,9 +441,9 @@
           <article><h3>{{ helpSection() }}</h3>
           @switch (helpSection()) {
             @case ('Getting started') {<p>Create a project with New, name its system, and enter inputs in the right panel. Add equation, Python function, or note cards below the calculations.</p><p>Click Run to solve the whole dependency system. Alpha Solve repeats the calculations until the shared variables stop changing, so a calculation can use a value produced by a later card. Results appear alongside each card and in Computed.</p>}
-            @case ('Projects and files') {<p>New keeps your other projects in the explorer. Click a project name to switch; use its arrow to collapse or expand its systems. Each project can contain several systems. Delete a project with the × on its tab or its right-click menu; at least one project remains open.</p><p>Save writes the active project to an .asolve file. Open starts in Documents → Alpha Solve App and adds the chosen project to your explorer. A persistent notification displays the full saved path.</p><p>Autosave restores open projects on this computer. Save files separately for backups or sharing.</p>}
-            @case ('Equations and variables') {<p>Define named inputs on the right and type those same names directly in equations. Parameter names use a math editor too: type an underscore to create a subscript, such as x_0. Typed or pasted Greek letters are stored as canonical names, so ρ_ox is shared with rho_ox throughout the system. A compound name such as ΔR is stored as DeltaR; use an explicit multiplication sign when Δ and R are separate variables.</p><p>Example: U = 0.5 × k × x_0². Type * for multiplication, / for fractions, ^ for powers, and _ for subscripts. Use arrow keys to leave a subscript or fraction.</p><p>When an equation or Python function references a name that is not an input, solver target, computed value, or output of any current or future card, a Possible missing inputs row appears. Click a variable to add it as an input, or leave it alone if it should remain an unknown. Nothing is added automatically.</p><p>Inputs and calculated values are shared across all calculations. Alpha Solve repeats dependency passes until no values or units change. Use explicit multiplication between names. Recognized SI input units are normalized and computed units are inferred dimensionally through products, quotients, powers, roots, and dimensionally consistent sums. Blank computed units indicate that the expression or one of its inputs could not be resolved dimensionally.</p>}
-            @case ('Python functions') {<p>Write exactly one Python function. Its arguments match input names or calculated variables from anywhere in the system. Return a dictionary whose keys name the output variables.</p><pre>def calculate(m, k):
+            @case ('Projects and files') {<p>New keeps your other projects in the explorer. Click a project name to switch; use its arrow to collapse or expand its systems. Each project can contain several systems. Delete a project with the × on its tab or its right-click menu; at least one project remains open.</p><p>Save writes the active project to an .asolve file. Open starts in Documents → Alpha Solve App and adds the chosen project to your explorer. A persistent notification displays the full saved path.</p><p>Open projects are also written to Documents → Alpha Solve App → Projects. The app rescans that folder every two seconds, so additions, edits, and removals appear in other open Alpha Solve windows. Save files separately for backups or sharing.</p>}
+            @case ('Equations and variables') {<p>Define named inputs on the right and type those same names directly in equations. Parameter names use a math editor too: type an underscore to create a subscript, such as x_0. Typed or pasted Greek letters are stored as canonical names, so ρ_ox is shared with rho_ox throughout the system. A compound name such as ΔR is stored as DeltaR; use an explicit multiplication sign when Δ and R are separate variables.</p><p>Example: U = 0.5 × k × x_0². Type * for multiplication, / for fractions, ^ for powers, and _ for subscripts. Use arrow keys to leave a subscript or fraction. Press Enter in an equation editor to create and focus a new equation immediately below it.</p><p>Define reusable symbolic functions in an equation card, for example f(x)=x^3. Other equation cards can call f(2), f(a), or any other compatible argument; the definition may appear before or after the call.</p><p>When an equation or Python function references a name that is not an input, solver target, computed value, or output of any current or future card, a Possible missing inputs row appears. Click a variable to add it as an input, or leave it alone if it should remain an unknown. Nothing is added automatically.</p><p>Inputs and calculated values are shared across all calculations. Alpha Solve repeats dependency passes until no values or units change. Use explicit multiplication between names. Recognized SI input units are normalized and computed units are inferred dimensionally through products, quotients, powers, roots, and dimensionally consistent sums. Blank computed units indicate that the expression or one of its inputs could not be resolved dimensionally.</p><p>Use the Decimal/Scientific toolbar control to change numeric result display without changing stored calculation precision. Drag the separators between the explorer, calculations, inputs, and computed results to resize them; the layout is restored next time.</p>}
+            @case ('Python functions') {<p>Write exactly one Python function per card. Its arguments match input names or calculated variables from anywhere in the system. All function definitions in the project share one namespace, so one card can call a function defined by another card, even when that definition appears later. Calculation functions return a dictionary whose keys name the output variables. Helper functions may return any Python value; their card will act as a definition rather than adding a computed variable.</p><pre>def calculate(m, k):
     return {{ '{' }}"frequency": (k / m) ** 0.5{{ '}' }}</pre><p>Imports belong inside your function. Print output appears under Console output. Only run code from sources you trust. Runtime packages currently require an internet connection.</p>}
             @case ('Solver capabilities') {<p>The solver groups equations that share unknowns and solves those equations together. Add optional Solver targets in the right panel to specify a variable's initial guess and bounds. If symbolic solving has several valid answers, bounds or guesses select a branch. Numerical solving requires a guess for each unknown in its connected group. The app reports insufficient equations, conflicts, and ambiguous answers above the cards.</p><ul>@for (capability of solverCapabilities; track capability) {<li>{{ capability }}</li>}</ul><p>Input values using recognized SI units and prefixes are normalized to coherent SI before evaluation (for example, GPa to Pa). Derived equation units are inferred where dimensional relationships can be resolved; review complex models before using results.</p>}
             @case ('Arrange calculations') {<p>Drag the dotted handle at the left of a card onto another card to organize the calculation sequence. The arrow buttons remain available for keyboard users.</p><p>Right-click empty space among the cards to add an equation, Python function, or note at that location. Right-click a card to duplicate, rename, run, collapse, add below, or delete it. Right-click a system in Project Explorer for system actions.</p><p>Right-click an input or computed variable to find cards that reference its exact name. Click a result to jump to that card. Normal text editing menus remain available in input fields.</p><p>The arrow beside the handle collapses or expands a card. Dependency passes allow values to flow in either direction, while order still controls which calculation runs first. Undo and Redo reverse edits within the active project.</p>}

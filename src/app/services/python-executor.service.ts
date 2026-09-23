@@ -302,6 +302,35 @@ json.dumps(resolve_computed_values(json.loads(computed_values_input_json)))
     return JSON.parse(result) as ResolvedComputedValues;
   }
 
+  /** Compile every code-cell function into one project namespace. Function
+   * bodies are not executed here, so cells may call functions declared later. */
+  async prepareProjectFunctions(sources: string[]): Promise<void> {
+    if (!this.isInitialized || !this.pyodide) {
+      throw new Error('Python executor is not initialized.');
+    }
+    this.pyodide.globals.set('project_code_sources_json', JSON.stringify(sources));
+    await this.pyodide.runPythonAsync(`
+import ast
+import json
+
+_alpha_solve_project_namespace = {"__builtins__": __builtins__}
+_alpha_solve_project_functions = {}
+_alpha_solve_project_errors = {}
+for source_index, project_source in enumerate(json.loads(project_code_sources_json), start=1):
+    try:
+        project_tree = ast.parse(project_source)
+        project_functions = [node for node in project_tree.body
+                             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        if len(project_functions) != 1:
+            raise ValueError(f"Python cell {source_index} must contain exactly one top-level function.")
+        exec(compile(project_tree, f"<alpha-solve-code-cell-{source_index}>", "exec"),
+             _alpha_solve_project_namespace)
+        _alpha_solve_project_functions[project_source] = _alpha_solve_project_namespace[project_functions[0].name]
+    except Exception as project_error:
+        _alpha_solve_project_errors[project_source] = str(project_error)
+    `);
+  }
+
   /**
    * Call a cell solution function by name
    */
@@ -585,9 +614,15 @@ if len(function_defs) != 1:
     raise ValueError("A code cell must contain exactly one top-level Python function.")
 
 function_name = function_defs[0].name
-namespace = {}
-exec(compile(tree, "<alpha-solve-code-cell>", "exec"), namespace)
-function = namespace[function_name]
+try:
+    namespace = _alpha_solve_project_namespace
+    if code_cell_source in _alpha_solve_project_errors:
+        raise ValueError(_alpha_solve_project_errors[code_cell_source])
+    function = _alpha_solve_project_functions[code_cell_source]
+except (NameError, KeyError):
+    namespace = {"__builtins__": __builtins__}
+    exec(compile(tree, "<alpha-solve-code-cell>", "exec"), namespace)
+    function = namespace[function_name]
 context_data = json.loads(code_cell_context_json)
 from sympy import Symbol
 context_symbols = {variable["name"]: Symbol(variable["name"])
@@ -616,25 +651,36 @@ available_values = {
 }
 signature = inspect.signature(function)
 arguments = {}
+missing_arguments = []
 for parameter_name, parameter in signature.parameters.items():
     if parameter_name in available_values:
         arguments[parameter_name] = available_values[parameter_name]
     elif parameter.default is inspect.Parameter.empty:
-        raise ValueError(f"Missing input variable: {parameter_name}")
+        missing_arguments.append(parameter_name)
 
 stdout_buffer = io.StringIO()
-with contextlib.redirect_stdout(stdout_buffer):
-    function_result = function(**arguments)
-    if inspect.isawaitable(function_result):
-        function_result = await function_result
+if missing_arguments:
+    function_result = {}
+    stdout_buffer.write("Function definition loaded; waiting for inputs: " + ", ".join(missing_arguments))
+else:
+    with contextlib.redirect_stdout(stdout_buffer):
+        function_result = function(**arguments)
+        if inspect.isawaitable(function_result):
+            function_result = await function_result
+    if not isinstance(function_result, dict):
+        stdout_buffer.write("\\nHelper function loaded (its return value is available to other Python functions).")
+        function_result = {}
 
-if not isinstance(function_result, dict):
-    raise TypeError("The code cell function must return a dictionary of named outputs.")
+def stable_output(value):
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("Python outputs must be finite.")
+        return format(value, ".14g")
+    return str(value)
 
-outputs = [
-    {"name": str(name), "value": str(value)}
-    for name, value in function_result.items()
-]
+import math
+outputs = [{"name": str(name), "value": stable_output(value)}
+           for name, value in function_result.items()]
 
 variables_by_name = {
     variable["name"]: variable

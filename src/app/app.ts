@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, HostListener, OnDestroy, computed, signal } from '@angular/core';
+import { Component, HostListener, OnDestroy, QueryList, ViewChildren, computed, signal } from '@angular/core';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { FormsModule } from '@angular/forms';
 import { LatexRendererComponent } from './components/latex-renderer/latex-renderer.component';
@@ -64,6 +64,7 @@ interface VariableReferences {
   styleUrls: ['./app.css', './context-menu.css']
 })
 export class App implements OnDestroy {
+  @ViewChildren(MathQuillInputComponent) private equationEditors!: QueryList<MathQuillInputComponent>;
   private readonly autosaveKey = 'alpha-solve.workspace.autosave.v5';
 
   protected readonly workspace = signal(this.loadWorkspace());
@@ -75,6 +76,11 @@ export class App implements OnDestroy {
   protected readonly collapsed = signal<Set<string>>(new Set());
   protected readonly savedPath = signal('');
   protected readonly lightTheme = signal(typeof localStorage !== 'undefined' && localStorage.getItem('alpha-solve.theme') === 'light');
+  protected readonly scientificNotation = signal(typeof localStorage !== 'undefined' && localStorage.getItem('alpha-solve.scientific') === 'true');
+  protected readonly leftPanelWidth = signal(this.loadNumberSetting('alpha-solve.layout.left', 252));
+  protected readonly rightPanelWidth = signal(this.loadNumberSetting('alpha-solve.layout.right', 330));
+  protected readonly inputPanelPercent = signal(this.loadNumberSetting('alpha-solve.layout.inputs', 55));
+  protected readonly calculationInputPercent = signal(this.loadNumberSetting('alpha-solve.layout.calculation', 62));
   protected readonly helpSections = ['Getting started', 'Projects and files', 'Equations and variables', 'Python functions', 'Solver capabilities', 'Arrange calculations', 'JSON and LLMs', 'About'];
   protected readonly solverCapabilities = [
     'Algebraic equations with one or more symbolic variables',
@@ -84,6 +90,8 @@ export class App implements OnDestroy {
     'Definite and indefinite integrals supported by the active SymPy solver',
     'Ordinary differential equations supported by the active SymPy solver',
     'Custom single-function Python calculations returning named variables',
+    'Reusable symbolic function definitions such as f(x)=x^3, callable with different arguments',
+    'Project Python functions calling other Python functions in the same project',
     'Multi-pass dependencies between equations and Python calculations',
     'Simultaneous solving of connected algebraic equations',
     'Numerical solving with initial guesses and optional bounds when symbolic solving fails'
@@ -141,6 +149,8 @@ export class App implements OnDestroy {
       this.resetHistory();
     }
     this.touch(true);
+    if (isTauri()) void invoke('delete_workspace_project', { id: project.id })
+      .catch(error => console.warn('Could not remove the project autosave', error));
     this.showMessage(`${project.name} deleted`);
   }
 
@@ -381,9 +391,20 @@ export class App implements OnDestroy {
   private lastState = this.workspace().toString();
   private autosaveTimer: ReturnType<typeof setTimeout> | null = null;
   private messageTimer: ReturnType<typeof setTimeout> | null = null;
+  private projectScanTimer: ReturnType<typeof setInterval> | null = null;
+  private nativeProjectIds = new Set<string>();
+  private missingNativeScans = new Map<string, number>();
 
   constructor(private readonly pythonExecutor: PythonExecutorService) {
     void this.initializeRuntime();
+    void this.initializeProjectSync();
+  }
+
+  private loadNumberSetting(key: string, fallback: number): number {
+    const stored = typeof localStorage === 'undefined' ? null : localStorage.getItem(key);
+    if (stored === null || stored.trim() === '') return fallback;
+    const value = Number(stored);
+    return Number.isFinite(value) ? value : fallback;
   }
 
   protected selectSystem(systemId: string): void {
@@ -472,6 +493,68 @@ export class App implements OnDestroy {
     this.recordChange('System removed');
   }
 
+  protected toggleScientificNotation(): void {
+    this.scientificNotation.update(value => !value);
+    localStorage.setItem('alpha-solve.scientific', String(this.scientificNotation()));
+  }
+
+  protected formatDisplayValue(value: string): string {
+    const trimmed = value.trim();
+    if (!trimmed || !/^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i.test(trimmed)) return value;
+    const numeric = Number(trimmed);
+    if (!Number.isFinite(numeric)) return value;
+    if (this.scientificNotation()) return numeric.toExponential(8).replace(/\.?(0+)e/, 'e');
+    return Number.parseFloat(numeric.toPrecision(14)).toString();
+  }
+
+  protected formatSolutionLatex(solution: string): string {
+    const wrapped = solution.startsWith('$$') && solution.endsWith('$$');
+    const source = wrapped ? solution.slice(2, -2) : solution;
+    const match = source.match(/^(.*=)\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)$/i);
+    if (!match) return solution;
+    const numeric = Number(match[2]);
+    if (!Number.isFinite(numeric)) return solution;
+    let rendered = this.formatDisplayValue(match[2]);
+    if (this.scientificNotation()) {
+      const parts = rendered.split('e');
+      rendered = `${parts[0]}\\times 10^{${Number(parts[1])}}`;
+    }
+    const result = `${match[1]}${rendered}`;
+    return wrapped ? `$$${result}$$` : result;
+  }
+
+  protected startPanelResize(kind: 'left' | 'right' | 'inputs' | 'calculation', event: PointerEvent): void {
+    event.preventDefault();
+    const startX = event.clientX, startY = event.clientY;
+    const initial = kind === 'left' ? this.leftPanelWidth() : kind === 'right' ? this.rightPanelWidth()
+      : kind === 'inputs' ? this.inputPanelPercent() : this.calculationInputPercent();
+    const target = event.currentTarget as HTMLElement;
+    target.setPointerCapture?.(event.pointerId);
+    const move = (moveEvent: PointerEvent): void => {
+      if (kind === 'left') this.leftPanelWidth.set(Math.max(190, Math.min(480, initial + moveEvent.clientX - startX)));
+      else if (kind === 'right') this.rightPanelWidth.set(Math.max(250, Math.min(620, initial - moveEvent.clientX + startX)));
+      else {
+        const container = target.parentElement;
+        if (!container) return;
+        const delta = kind === 'inputs'
+          ? (moveEvent.clientY - startY) / container.clientHeight * 100
+          : (moveEvent.clientX - startX) / container.clientWidth * 100;
+        const next = Math.max(25, Math.min(78, initial + delta));
+        if (kind === 'inputs') this.inputPanelPercent.set(next); else this.calculationInputPercent.set(next);
+      }
+    };
+    const stop = (): void => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+      localStorage.setItem('alpha-solve.layout.left', String(this.leftPanelWidth()));
+      localStorage.setItem('alpha-solve.layout.right', String(this.rightPanelWidth()));
+      localStorage.setItem('alpha-solve.layout.inputs', String(this.inputPanelPercent()));
+      localStorage.setItem('alpha-solve.layout.calculation', String(this.calculationInputPercent()));
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop, { once: true });
+  }
+
   private focusSystemTitle(system: Project): void {
     this.selectSystem(system.id);
     setTimeout(() => {
@@ -523,6 +606,15 @@ export class App implements OnDestroy {
     this.markFromCellStale(cell.id);
     this.recordChange(`${this.cellLabel(cell)} added`);
     setTimeout(() => document.getElementById(`cell-${cell.id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+  }
+
+  protected addEquationBelow(cell: EquationCell): void {
+    const system = this.activeSystem();
+    const index = system?.cells.indexOf(cell) ?? -1;
+    const editorIndex = system?.cells.slice(0, index + 1)
+      .filter(candidate => candidate.type === 'equation' && !this.collapsed().has(candidate.id)).length || 0;
+    this.addCell('equation', index < 0 ? undefined : index + 1);
+    setTimeout(() => this.equationEditors.get(editorIndex)?.focus());
   }
 
   private duplicateCell(cell: Cell): void {
@@ -983,7 +1075,7 @@ export class App implements OnDestroy {
       .filter(variable => !parameterNames.has(variable.name))
       .map(variable => ({
         name: variable.name,
-        value: variable.values.join(', '),
+        value: variable.values.map(value => this.formatDisplayValue(value)).join(', '),
         unit: variable.unit || outputUnits.get(variable.name) || '',
         type: variable.type
       }));
@@ -1119,8 +1211,83 @@ export class App implements OnDestroy {
       this.syncProjects();
       localStorage.setItem(this.autosaveKey, this.workspace().toString());
       localStorage.setItem('alpha-solve.projects.v1', JSON.stringify(this.projects().map(p => p.toString())));
+      void this.persistProjectsToDisk([this.workspace()]);
       this.autosaveTimer = null;
     }, 350);
+  }
+
+  private async initializeProjectSync(): Promise<void> {
+    if (!isTauri()) {
+      window.addEventListener('storage', this.storageSyncListener);
+      return;
+    }
+    await this.rescanProjectDirectory();
+    await this.persistProjectsToDisk();
+    this.projectScanTimer = setInterval(() => void this.rescanProjectDirectory(), 2000);
+  }
+
+  private readonly storageSyncListener = (event: StorageEvent): void => {
+    if (event.key !== 'alpha-solve.projects.v1' || !event.newValue) return;
+    this.mergeScannedProjects((JSON.parse(event.newValue) as string[]).map(value => Workspace.fromString(value)));
+  };
+
+  private async persistProjectsToDisk(projectsToWrite: Workspace[] = this.projects()): Promise<void> {
+    if (!isTauri()) return;
+    try {
+      this.syncProjects();
+      await Promise.all(projectsToWrite.map(project =>
+        invoke('persist_workspace_project', { id: project.id, contents: project.toString() })
+      ));
+    } catch (error) {
+      console.warn('Could not persist project autosaves', error);
+    }
+  }
+
+  private async rescanProjectDirectory(): Promise<void> {
+    try {
+      const documents = await invoke<string[]>('scan_workspace_projects');
+      const scanned = documents.flatMap(value => {
+        try { return [Workspace.fromString(value)]; } catch { return []; }
+      });
+      const scannedIds = new Set(scanned.map(project => project.id));
+      if (this.nativeProjectIds.size) {
+        for (const id of scannedIds) this.missingNativeScans.delete(id);
+        const removed = [...this.nativeProjectIds].filter(id => {
+          if (scannedIds.has(id)) return false;
+          const misses = (this.missingNativeScans.get(id) || 0) + 1;
+          this.missingNativeScans.set(id, misses);
+          return misses >= 2;
+        });
+        if (removed.length && this.projects().length > removed.length) {
+          this.projects.update(projects => projects.filter(project => !removed.includes(project.id)));
+          if (removed.includes(this.workspace().id)) this.workspace.set(this.projects()[0]);
+        }
+      }
+      this.nativeProjectIds = new Set([...this.nativeProjectIds, ...scannedIds].filter(id => !this.missingNativeScans.has(id) || (this.missingNativeScans.get(id) || 0) < 2));
+      this.mergeScannedProjects(scanned);
+    } catch (error) {
+      console.warn('Project directory rescan failed', error);
+    }
+  }
+
+  private mergeScannedProjects(scanned: Workspace[]): void {
+    this.syncProjects();
+    const merged = new Map(this.projects().map(project => [project.id, project]));
+    let activeReplacement: Workspace | null = null;
+    for (const remote of scanned) {
+      const local = merged.get(remote.id);
+      if (!local || remote.updatedAt.getTime() > local.updatedAt.getTime() ||
+          (remote.updatedAt.getTime() === local.updatedAt.getTime() && remote.toString() !== local.toString())) {
+        merged.set(remote.id, remote);
+        if (remote.id === this.workspace().id) activeReplacement = remote;
+      }
+    }
+    this.projects.set([...merged.values()]);
+    if (activeReplacement) {
+      this.workspace.set(activeReplacement);
+      this.resetHistory();
+    }
+    this.revision.update(value => value + 1);
   }
 
   private chooseJsonFile(onLoad: (text: string) => Promise<void>): void {
@@ -1182,5 +1349,7 @@ export class App implements OnDestroy {
     localStorage.setItem('alpha-solve.projects.v1', JSON.stringify(this.projects().map(p => p.toString())));
     if (this.autosaveTimer) clearTimeout(this.autosaveTimer);
     if (this.messageTimer) clearTimeout(this.messageTimer);
+    if (this.projectScanTimer) clearInterval(this.projectScanTimer);
+    window.removeEventListener('storage', this.storageSyncListener);
   }
 }

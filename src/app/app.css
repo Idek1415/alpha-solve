@@ -187,7 +187,7 @@ button {
 .workspace-grid {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(210px, 252px) minmax(450px, 1fr) minmax(270px, 330px);
+  grid-template-columns: minmax(190px, var(--left-panel, 252px)) 5px minmax(360px, 1fr) 5px minmax(250px, var(--right-panel, 330px));
   background: #11151a;
 }
 
@@ -211,6 +211,12 @@ button {
 
 .parameters-panel {
   overflow: hidden;
+}
+
+.parameter-input-section {
+  flex: 0 0 var(--input-panel, 55%);
+  min-height: 110px;
+  overflow: auto;
 }
 
 .panel-heading {
@@ -583,8 +589,10 @@ button {
 .equation-layout,
 .code-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(190px, 0.85fr);
+  grid-template-columns: minmax(0, var(--calculation-input, 62%)) 5px minmax(150px, 1fr);
 }
+
+.cell-splitter { cursor: col-resize; background: #242b31; border-left: 1px solid #343a40; touch-action: none; }
 
 .cell-input-pane,
 .cell-result-pane,
@@ -597,7 +605,7 @@ button {
 .cell-result-pane,
 .code-result-pane {
   overflow: hidden;
-  border-left: 1px solid #343a40;
+  border-left: 0;
   background: #1c2227;
 }
 
@@ -622,6 +630,18 @@ button {
   border-radius: 4px;
   background: #171c20;
 }
+
+.panel-splitter {
+  position: relative;
+  z-index: 4;
+  background: #11161b;
+  touch-action: none;
+  user-select: none;
+}
+
+.panel-splitter.vertical { cursor: col-resize; border-left: 1px solid #2b333a; border-right: 1px solid #080a0c; }
+.panel-splitter.horizontal { height: 5px; flex: 0 0 5px; cursor: row-resize; border-top: 1px solid #2b333a; border-bottom: 1px solid #080a0c; }
+.panel-splitter:hover, .panel-splitter:active, .cell-splitter:hover, .cell-splitter:active { background: #347ca5; }
 
 .missing-variables {
   display: flex;
@@ -970,6 +990,7 @@ button {
 }
 
 .computed-heading {
+  flex: 0 0 auto;
   margin-top: 2px;
   border-top: 1px solid #30363d;
 }
@@ -1129,7 +1150,7 @@ button {
 
 @media (max-width: 980px) {
   .workspace-grid {
-    grid-template-columns: 180px minmax(320px, 1fr) 300px;
+    grid-template-columns: 180px 5px minmax(320px, 1fr) 5px 300px;
     overflow-x: auto;
   }
 
@@ -1140,7 +1161,7 @@ button {
 
 @media (max-width: 720px) {
   .workspace-grid {
-    grid-template-columns: 180px minmax(320px, 1fr) 300px;
+    grid-template-columns: 180px 5px minmax(320px, 1fr) 5px 300px;
   }
 
   .project-panel {
@@ -1151,6 +1172,8 @@ button {
   .code-layout {
     grid-template-columns: 1fr;
   }
+
+  .cell-splitter { display: none; }
 
   .cell-result-pane,
   .code-result-pane {
@@ -1188,6 +1211,7 @@ button {
 .help-layout article { padding: 12px 28px 24px; font-size: 15px; line-height: 1.7; }
 .help-layout pre { background: #10171e; padding: 14px; overflow: auto; }
 .output-value, .computed-row span { overflow-wrap: anywhere; }
+.tool-button.active-tool { color: #b9e6ff; background: #263e4d; border-color: #4d7891; }
 
 /* Reference-inspired light engineering workspace. */
 .application-shell.light-theme { color: #20262c; background: #e7e9eb; }
@@ -1218,6 +1242,12 @@ button {
 .light-theme .group-label, .light-theme .cell-node { color: #4c5963; }
 .light-theme .calculation-header { background: #f7f8f8; border-color: #b8bec3; }
 .light-theme .calculation-card { background: #fff; border-color: #b8c0c6; box-shadow: 0 1px 3px #0002; }
+.light-theme .note-card { border-color: #c9aa54; }
+.light-theme .note-card .card-header { background: #f3e8bd; border-color: #d3bb72; }
+.light-theme .note-card .note-editor { color: #4e452c; background: #fff9e6; }
+.light-theme .panel-splitter, .light-theme .cell-splitter { background: #ccd2d6; border-color: #aeb5ba; }
+.light-theme .panel-splitter:hover, .light-theme .cell-splitter:hover { background: #4b93bd; }
+.light-theme .tool-button.active-tool { color: #173a50; background: #d5eaf5; border-color: #7faec7; }
 .light-theme .card-header { color: #17212a; background: #dceaf5; border-color: #b2c6d5; }
 .light-theme .card-title { color: #17212a; }
 .light-theme .card-number { color: #324654; background: #c7dce9; }

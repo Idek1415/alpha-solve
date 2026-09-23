@@ -3,6 +3,7 @@
 import math
 import re
 from collections import defaultdict
+from functools import lru_cache
 
 from sympy import Eq, Symbol, latex, linear_eq_to_matrix, linsolve, solve, sympify, simplify, Derivative, Pow, factor_terms
 from sympy.core.function import AppliedUndef
@@ -12,6 +13,51 @@ from sympy_tools import from_latex
 
 
 MAX_SYMBOLIC_UNKNOWNS = 6
+
+
+@lru_cache(maxsize=512)
+def _parse_equation(source):
+    """LaTeX parsing dominates repeat dependency passes; SymPy trees are immutable."""
+    return from_latex(source, evaluate=False)
+
+
+def _stable_value(value):
+    """Keep useful precision while suppressing binary floating-point tails."""
+    expression = sympify(value)
+    if expression.is_Float:
+        numeric = float(expression)
+        if abs(numeric) < 1e-14:
+            numeric = 0.0
+        return format(numeric, ".14g")
+    if expression.is_Integer:
+        return str(expression)
+    return str(expression.evalf(15))
+
+
+def _expand_user_functions(expression, definitions):
+    """Inline project equations such as f(x)=x^3 at every later call site."""
+    expanded = expression
+    for _ in range(max(1, len(definitions) + 1)):
+        changed = False
+
+        def replace_call(call):
+            nonlocal changed
+            definition = definitions.get(call.func.__name__)
+            if definition is None:
+                return call
+            arguments, body = definition
+            if len(arguments) != len(call.args):
+                raise ValueError("function %s expects %d argument(s), received %d" %
+                                 (call.func.__name__, len(arguments), len(call.args)))
+            changed = True
+            return body.subs(dict(zip(arguments, call.args)), simultaneous=True)
+
+        expanded = expanded.replace(lambda node: isinstance(node, AppliedUndef), replace_call)
+        if not changed:
+            return expanded
+    if expanded.has(AppliedUndef):
+        raise ValueError("recursive or circular function definition")
+    return expanded
 
 
 def _numeric(value):
@@ -71,7 +117,8 @@ def resolve_computed_values(payload):
                 numeric = False
                 continue
             result = parsed.subs(known)
-            values.append(str(result) if result != parsed else original)
+            values.append(_stable_value(result) if not result.free_symbols and _numeric(result) is not None
+                          else (str(result) if result != parsed else original))
             numeric = numeric and not result.free_symbols and _numeric(result) is not None
         resolved["values"] = values
         if values and numeric:
@@ -292,14 +339,30 @@ def solve_system(payload):
             invalid_input = True
             diagnostics.append("Input %s could not be interpreted as a number." % item["name"])
 
-    records = []
+    parsed_items = []
+    definitions = {}
     for item in payload.get("equations", []):
         if not item.get("latex", "").strip():
             continue
         try:
-            equation = from_latex(item["latex"], evaluate=False)
+            equation = _parse_equation(item["latex"])
             if not isinstance(equation, Eq):
                 raise ValueError("not an equation")
+            if isinstance(equation.lhs, AppliedUndef):
+                arguments = tuple(equation.lhs.args)
+                if not arguments or any(not isinstance(argument, Symbol) for argument in arguments):
+                    raise ValueError("function definitions require symbolic arguments")
+                definitions[equation.lhs.func.__name__] = (arguments, equation.rhs)
+                continue
+            parsed_items.append((item, equation))
+        except (ValueError, TypeError, SyntaxError, SympifyError) as error:
+            diagnostics.append("%s: unsupported equation (%s)." % (item.get("title") or "Equation", error))
+
+    records = []
+    for item, equation in parsed_items:
+        try:
+            equation = Eq(_expand_user_functions(equation.lhs, definitions),
+                          _expand_user_functions(equation.rhs, definitions), evaluate=False)
             if equation.has(Derivative, AppliedUndef):
                 # Differential equations belong to the analytical ODE solver.
                 continue
@@ -357,11 +420,11 @@ def solve_system(payload):
             if candidate is None:
                 diagnostics.append("%s: %s" % (label, reason))
                 continue
-        results.update({name: {"value": str(sympify(value).evalf(17)), "method": reason} for name, value in candidate.items()})
+        results.update({name: {"value": _stable_value(value), "method": reason} for name, value in candidate.items()})
         for item in group:
             for symbol in symbols:
                 name = str(symbol)
-                by_cell[item["id"]].append(latex(symbol) + "=" + latex(sympify(candidate[name])))
+                by_cell[item["id"]].append(latex(symbol) + "=" + latex(sympify(_stable_value(candidate[name]))))
 
     return {"variables": results, "solutionsByCell": dict(by_cell),
             "blockedVariables": sorted(blocked_variables), "blockedCells": sorted(blocked_cells),

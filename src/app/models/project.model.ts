@@ -188,6 +188,11 @@ export class Project {
     this.solveDiagnostics = [];
 
     const ordered = [...executable.slice(startIndex), ...executable.slice(0, startIndex)];
+    if (typeof pythonExecutor.prepareProjectFunctions === 'function') {
+      await pythonExecutor.prepareProjectFunctions(
+        executable.filter((cell): cell is CodeCell => cell.type === 'code').map(cell => cell.source)
+      );
+    }
     let inputs = parametersToContext(this.parameters);
     if (inputs.variables.length && typeof pythonExecutor.resolveComputedValues === 'function') {
       const resolvedInputs = await pythonExecutor.resolveComputedValues({
@@ -490,6 +495,13 @@ export class Project {
     // those roots in the shared context, but leave branch selection to the
     // coupled solver; a scalar plugin only receives unambiguous substitutions.
     inputContext = this.singleValuedContext(inputContext);
+    const definitionLeft = cell.latex.split('=')[0]?.replace(/\s+/g, '') || '';
+    if (/^[A-Za-z][A-Za-z0-9_{}\\]*?(?:\\left)?\(/.test(definitionLeft)) {
+      cell.context = inputContext;
+      cell.solutions = [];
+      cell.updatedAt = new Date();
+      return inputContext;
+    }
     // Step 1: Run proc macros to potentially modify cell content
     const modifiedCell = await this.runProcMacros(cell, inputContext, pythonExecutor);
 
