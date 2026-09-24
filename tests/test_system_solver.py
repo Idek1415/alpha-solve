@@ -26,7 +26,7 @@ class SystemSolverTests(unittest.TestCase):
         })
         variables = {variable["name"]: variable for variable in result["variables"]}
         self.assertAlmostEqual(float(variables["BF"]["values"][0]), 0.381)
-        self.assertEqual(variables["pitch_f"]["values"], ["1.00000000000000", "0.993000000000000"])
+        self.assertEqual(variables["pitch_f"]["values"], ["1", "0.993"])
         self.assertEqual(variables["pitch_f"]["unit"], "m")
         self.assertNotIn("LMR", result["solutionsByCell"]["ratio"][0])
 
@@ -102,6 +102,61 @@ class SystemSolverTests(unittest.TestCase):
         })
         self.assertEqual(result["variables"], {})
         self.assertIn("conflicts", result["diagnostics"][0])
+
+    def test_reduces_large_nonlinear_dependency_chain(self):
+        result = solve_system({
+            "equations": [
+                equation("seed", "a=2"),
+                equation("b", "b=a^2"),
+                equation("c", "c=b^2"),
+                equation("d", "d=c+1"),
+                equation("e", "e=d^2"),
+                equation("f", "f=e+1"),
+                equation("g", "g=f^2"),
+            ],
+            "known": [], "targets": []
+        })
+        self.assertEqual(float(result["variables"]["a"]["value"]), 2)
+        self.assertEqual(float(result["variables"]["g"]["value"]), 84100)
+        self.assertFalse(result["diagnostics"])
+
+    def test_returns_values_available_before_a_python_bridge(self):
+        equations = [
+            equation("momentum", "LMR=TMR/BF"),
+            equation("target", "LMR=LMR_target"),
+            equation("blockage", r"BF=\frac{N_f\cdot d_f}{\pi\cdot D_p}"),
+            equation("pitch", r"pitch_f=\frac{\pi\cdot D_p}{N_f}"),
+            equation("ligament", "ligament_f=pitch_f-d_f"),
+            equation("radius squared", r"r2_ox_outer=(D_p/2)^2+A_ox/\pi"),
+            equation("annulus thickness", "delta_ox=r_ox_outer-D_p/2"),
+            equation("contraction", "CPR=D_c/D_p"),
+            equation("skip distance", "SDR=L_s/D_p"),
+            equation("skip target", "SDR=SDR_target"),
+        ]
+        known = [
+            {"name": "TMR", "value": "0.304914"},
+            {"name": "d_f", "value": "0.000489"},
+            {"name": "N_f", "value": "20"},
+            {"name": "LMR_target", "value": "1"},
+            {"name": "A_ox", "value": "0.000122082"},
+            {"name": "D_c", "value": "0.05334"},
+            {"name": "SDR_target", "value": "1"},
+        ]
+
+        first = solve_system({"equations": equations, "known": known, "targets": []})
+        self.assertIn("D_p", first["variables"])
+        self.assertIn("r2_ox_outer", first["variables"])
+        self.assertNotIn("delta_ox", first["variables"])
+        self.assertTrue(any("2 unknowns" in message for message in first["diagnostics"]))
+
+        radius = float(first["variables"]["r2_ox_outer"]["value"]) ** 0.5
+        second = solve_system({
+            "equations": equations,
+            "known": known + [{"name": "r_ox_outer", "value": str(radius)}],
+            "targets": []
+        })
+        self.assertIn("delta_ox", second["variables"])
+        self.assertFalse(second["diagnostics"])
 
     @unittest.skipIf(importlib.util.find_spec("scipy") is None, "SciPy is not installed")
     def test_numerical_fallback_uses_guess_and_bounds(self):

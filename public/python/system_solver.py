@@ -166,6 +166,66 @@ def _connected_components(records):
     return groups
 
 
+def _substitute_record(record, substitutions):
+    """Return a record with newly solved values applied to both original sides."""
+    left, right = record["sides"]
+    left = left.subs(substitutions, simultaneous=True)
+    right = right.subs(substitutions, simultaneous=True)
+    return {**record, "expression": left - right, "sides": (left, right),
+            "symbols": left.free_symbols | right.free_symbols}
+
+
+def _reduce_determined_equations(records, settings, results, by_cell):
+    """Solve one-unknown equations until only genuinely coupled groups remain.
+
+    A project may deliberately calculate a value in a Python card between two
+    equation passes. Solving one large connected component would mark that whole
+    component underdetermined and hide values that are already obtainable. This
+    reduction exposes those values first, so the Python card can run and provide
+    the bridge value on the next dependency pass.
+    """
+    substitutions = {}
+    pending = list(records)
+
+    while True:
+        pending = [_substitute_record(record, substitutions) for record in pending]
+        single_symbol_counts = defaultdict(int)
+        for record in pending:
+            if len(record["symbols"]) == 1:
+                single_symbol_counts[next(iter(record["symbols"]))] += 1
+
+        progress = False
+        for record in pending[:]:
+            symbols = sorted(record["symbols"], key=str)
+            if not symbols:
+                if _satisfies([record["sides"]], {}):
+                    pending.remove(record)
+                    progress = True
+                    break
+                continue
+            if len(symbols) != 1 or single_symbol_counts[symbols[0]] > 1:
+                continue
+
+            symbol = symbols[0]
+            candidate, reason = _choose_candidate(
+                _symbolic_candidates([record["expression"]], symbols),
+                symbols, settings, [record["sides"]])
+            if candidate is None:
+                continue
+
+            value = candidate[str(symbol)]
+            substitutions[symbol] = value
+            results[str(symbol)] = {"value": _stable_value(value), "method": reason}
+            by_cell[record["id"]].append(
+                latex(symbol) + "=" + latex(sympify(_stable_value(value))))
+            pending.remove(record)
+            progress = True
+            break
+
+        if not progress:
+            return pending
+
+
 def _within_bounds(name, value, settings):
     config = settings.get(name, {})
     if config.get("min") not in (None, "") and value < sympify(config["min"]):
@@ -382,6 +442,7 @@ def solve_system(payload):
         return {"variables": {}, "solutionsByCell": {},
                 "blockedVariables": sorted({str(symbol) for item in records for symbol in item['symbols']}),
                 "blockedCells": [item['id'] for item in records], "diagnostics": diagnostics}
+    records = _reduce_determined_equations(records, settings, results, by_cell)
     for group, symbols in _connected_components(records):
         expressions = [item["expression"] for item in group]
         sides = [item["sides"] for item in group]
