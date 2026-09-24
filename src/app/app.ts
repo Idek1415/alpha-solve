@@ -1244,8 +1244,13 @@ export class App implements OnDestroy {
   }
 
   private async rescanProjectDirectory(): Promise<void> {
+    // A solve mutates cell contexts over several dependency passes before the
+    // workspace timestamp and autosave are updated. Never let an older disk
+    // snapshot replace that live, partially solved object mid-run.
+    if (this.isRunning()) return;
     try {
       const documents = await invoke<string[]>('scan_workspace_projects');
+      if (this.isRunning()) return;
       const scanned = documents.flatMap(value => {
         try { return [Workspace.fromString(value)]; } catch { return []; }
       });
@@ -1271,6 +1276,7 @@ export class App implements OnDestroy {
   }
 
   private mergeScannedProjects(scanned: Workspace[]): void {
+    if (this.isRunning()) return;
     this.syncProjects();
     const merged = new Map(this.projects().map(project => [project.id, project]));
     let activeReplacement: Workspace | null = null;

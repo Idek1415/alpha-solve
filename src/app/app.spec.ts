@@ -62,6 +62,21 @@ describe('App', () => {
     expect(app.workspace().name).toBe('Original design');
   });
 
+  it('does not replace the live workspace with a disk snapshot while solving', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    const live = app.workspace();
+    live.name = 'Live solving workspace';
+    const disk = app.workspace().constructor.fromString(live.toString());
+    disk.name = 'Older disk workspace';
+
+    app.isRunning.set(true);
+    app.mergeScannedProjects([disk]);
+
+    expect(app.workspace()).toBe(live);
+    expect(app.workspace().name).toBe('Live solving workspace');
+  });
+
   it('reorders dropped cards and undo restores the original order', () => {
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance as any;
